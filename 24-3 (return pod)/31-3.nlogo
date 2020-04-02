@@ -371,7 +371,8 @@ to place-agv
 end
 
 to sort-order
-
+  let path py:python
+  py:setup path
   (py:run
     "import orders"
     "orderlist = orders.SortByDueDate()") ;python code -> orders
