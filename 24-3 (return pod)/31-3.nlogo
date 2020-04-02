@@ -59,7 +59,7 @@ to setup
   sort-order ; ganti ke continuous order nanti
   selected-pod
   place-agv ; OK
-;  place-item
+  place-item
 ;  assigning
   reset-ticks
   tick
@@ -77,6 +77,34 @@ to go
 end
 ;------------------------------------------------------------ SETUP ---------------------------------------------------------------------;
 
+to test
+  let mylist []
+  set mylist [[11 10 1][20 11 2]]
+  print get-data-list mylist 11 0
+  print get-data-list mylist 20 2
+  print get-data-list mylist 33 2
+  print get-data-list mylist 11 1
+  print get-data-list mylist 12 0
+end
+
+to-report get-data-list [lis key index]
+  let i  0
+  loop
+  [
+    let k (item 0 (item i lis))
+    ifelse key = k
+    [report (item index (item i lis))]
+    [set i i + 1]
+
+    if i = length lis
+      [report "Data not found"]
+  ]
+
+end
+
+to-report get-key-value [mat k index]
+
+end
 to delete-file
   file-delete "intersection coordinate.txt"
   carefully [file-delete "for pairing.csv"][]
@@ -326,9 +354,10 @@ to place-item
   loop
   [ ifelse n < total-pod
     [let m item n podcor
-     ask pods with [xcor = item 1 m and ycor = (item 0 m * -1)]
+     ask pods with [xcor = item 1 m and ycor = (item 0 m )]
       [ set pod-id n
-        set items item n poditem]]
+        set items item n poditem
+        print "test"]]
     [stop]
     set n n + 1 ]
 end
@@ -1056,6 +1085,23 @@ task
 1
 NIL
 HORIZONTAL
+
+BUTTON
+38
+17
+101
+50
+NIL
+test
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?

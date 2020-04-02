@@ -9,8 +9,10 @@ def PodLocation():
     import random, math, copy
     import string
     import csv
+    import os
 
-    with open('D:\\KIVA\\2019 8 August\\8-16\\layout\\layout set 1.csv') as f:
+    path = os.getcwd() + "\layout\layout set 1.csv"
+    with open(path) as f:
         reader = csv.reader(f,delimiter = ",")
         layout = []
         for row in reader:
