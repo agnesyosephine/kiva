@@ -398,7 +398,7 @@ to place-item [m]
       [ let sku []
         let item-type random 50 + 1
         let qty random 15 + 1
-        let due -1
+        let due 999
         set sku insert-item 0 sku item-type
         set sku insert-item 1 sku qty
         set sku insert-item 2 sku due
@@ -1079,10 +1079,10 @@ order set 1.csv
 String
 
 OUTPUT
-1090
-18
-1487
-613
+894
+21
+1291
+616
 11
 
 INPUTBOX
@@ -1136,10 +1136,10 @@ NIL
 1
 
 SLIDER
-899
-146
-1024
-179
+737
+435
+862
+468
 task
 task
 0
