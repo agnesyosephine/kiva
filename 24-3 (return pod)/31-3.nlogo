@@ -112,9 +112,9 @@ to generate-order [num]
       let due (random 4 + 1)
 
       ;show output
-      ifelse item-type < 10
-      [output-show (word "   0" item-type "          " qty "              " due "     ")]
-      [output-show (word "   " item-type "          " qty "              " due "     ")]
+;      ifelse item-type < 10
+;      [output-show (word "   0" item-type "          " qty "              " due "     ")]
+;      [output-show (word "   " item-type "          " qty "              " due "     ")]
 
       ;export excel
 
@@ -150,6 +150,7 @@ to assign-order-to-pod
     "import assignmentOP"
     "result = assignmentOP.assignOP()")
   let result py:runresult "result"
+
   selected-pods result
 end
 
@@ -391,7 +392,6 @@ to set-layout
 end
 
 to place-item [m]
-
   file-open "item in pod.csv"
   ask pods with [pod-id = m]
   [ set items []
@@ -410,8 +410,6 @@ to place-item [m]
 
         ;record in excel
         file-type m file-type "," file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
-
-
         set n n + 1]
       [file-close stop]]]
 end
@@ -1147,7 +1145,7 @@ task
 task
 0
 50
-5.0
+6.0
 1
 1
 NIL
