@@ -22,6 +22,7 @@ def AssignmentRobotToPod(robotnode,podnode):
     distcomb = np.full((robotnode,podnode),0)
     oridistcomb = np.full((robotnode,podnode),0)
     podid = []
+    robotid = []
 
     'generate dist manhatan'
     podbatchdist = 5
@@ -38,6 +39,7 @@ def AssignmentRobotToPod(robotnode,podnode):
         sycor = rawcarray[rgreedy,3]
         excor = rawcarray[rgreedy,4]
         eycor = rawcarray[rgreedy,5]
+        robotid = np.append(robotid,rawcarray[rgreedy,9])
         podid = np.append(podid,rawcarray[rgreedy,10])
 
         if rawcarray[rgreedy,8]==0:
@@ -62,7 +64,8 @@ def AssignmentRobotToPod(robotnode,podnode):
         distcomb[dumyrow-1,dumycol]=distmanhatan
         oridistcomb[dumyrow-1,dumycol]=distmanhatan
 
-    podid = podid[0:podnode]
+    podid = np.unique(podid)
+    robotid = np.unique(robotid)
     'hungarian'
     matrix = distcomb
     indexes = Munkres().compute(matrix)
@@ -72,9 +75,8 @@ def AssignmentRobotToPod(robotnode,podnode):
     for row, column in indexes:
         value = oridistcomb[row][column]
         total += value
-        pair = [int(row),podid[column]]
+        pair = [robotid[row],podid[column]]
         pairing = np.append(pairing,pair)
-        #print(f'({row}, {column}) -> {value}')
     pairing = np.reshape(pairing, (-1,2))
     print(f'total distance: ',{total})
 
