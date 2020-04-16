@@ -69,7 +69,8 @@ to setup
   ca
   delete-file
   set-layout ; OK
-  py:setup "C:\\Users\\Agnes\\AppData\\Local\\Programs\\Python\\Python37\\python.exe"
+  let path py:python
+  py:setup path
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
   generate-order 50
@@ -128,6 +129,7 @@ end
 
 to generate-order [num]
   let n 0
+  file-open "orders.csv"
   loop
   [ ifelse n < num
     [ ;random generator
@@ -141,11 +143,10 @@ to generate-order [num]
       [output-show (word "   " item-type "          " qty "              " due "     ")]
 
       ;export excel
-      file-open "orders.csv"
+
       file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
-      file-close
       set n n + 1]
-    [ stop]]
+    [file-close stop]]
 end
 
 to update-order
@@ -419,6 +420,8 @@ to set-layout
 end
 
 to place-item [m]
+
+  file-open "item in pod.csv"
   ask pods with [pod-id = m]
   [ set items []
     let n 0
@@ -427,7 +430,7 @@ to place-item [m]
       [ let sku []
         let item-type random 50 + 1
         let qty random 15 + 1
-        let due -1
+        let due 99999999999999
         set sku insert-item 0 sku item-type
         set sku insert-item 1 sku qty
         set sku insert-item 2 sku due
@@ -435,12 +438,11 @@ to place-item [m]
         set items insert-item n items sku
 
         ;record in excel
-        file-open "item in pod.csv"
         file-type m file-type "," file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
-        file-close
+
 
         set n n + 1]
-      [stop]]]
+      [file-close stop]]]
 end
 
 to switch-empty [xc yc]
@@ -577,7 +579,8 @@ to assigning [num]
     num = -1 and task <= AGV-number [set pod-to-assign task set available-AGV AGV-number]
     num != -1 and task > 1 [set pod-to-assign 2 set available-AGV 1]
     num != -1 and task <= 1 [set pod-to-assign task set available-AGV 1])
-  py:setup "C:\\Users\\Agnes\\AppData\\Local\\Programs\\Python\\Python37\\python.exe"
+  let path py:python
+  py:setup path
   py:set "robotnode" available-AGV
   py:set "podnode" pod-to-assign
   (py:run
@@ -1799,7 +1802,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
