@@ -14,6 +14,7 @@ def assignOP():
     data_pod = data_pod.reset_index(drop=True)
     no_match = []
     opsiPod = []
+    #changed b into notAssigned
     notAssigned = []
     for j in range (len(data_order.item)):
         for i in range (len(data_pod.item)):
