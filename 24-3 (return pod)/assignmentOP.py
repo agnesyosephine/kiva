@@ -26,6 +26,6 @@ def assignOP():
         else:
             selected_pod.append(match.id[0])
 
-    np.savetxt(order_path, b, delimiter = ',')
+    #np.savetxt(order_path, b, delimiter = ',')
     np.savetxt(pod_path, data_pod, delimiter = ',')
     return selected_pod
