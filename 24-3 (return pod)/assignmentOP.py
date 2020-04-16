@@ -12,13 +12,13 @@ def assignOP():
     selected_pod = []
     b = []
     for j in range (len(data_order.item)):
-        a = []
+        opsiPod = []
         for i in range (len(data_pod.item)):
             if data_pod.item[i] == data_order.item[j] and data_pod.qty[i] >= data_order.qty[j]:
-                data_pod.qty[i] = data_pod.qty[i] - data_order.qty[j]
-                data_pod.due_date[i] = data_order.due_date[j]
-                a.append([data_pod.pod_id[i],data_pod.due_date[i]])
-        match = pd.DataFrame(a, columns=['id', 'due_date'])
+#                data_pod.qty[i] = data_pod.qty[i] - data_order.qty[j]
+#                data_pod.due_date[i] = data_order.due_date[j]
+                opsiPod.append([data_pod.pod_id[i],data_pod.due_date[i]])
+        match = pd.DataFrame(opsiPod, columns=['id', 'due_date'])
         match.sort_values(by=['due_date'])
         if match.empty:
             no_match.append(j)

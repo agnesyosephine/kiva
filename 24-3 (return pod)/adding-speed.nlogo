@@ -9,7 +9,8 @@ globals
 [
   total-pod
   pod-size
-  time
+  path
+  acceleration-value
 ]
 
 jobs-own
@@ -50,110 +51,45 @@ AGVs-own
   xend
   yend
   u-turn
-  straight-first
+  speed
 ]
 
 to setup
   ca
+  initialization
   delete-file
   set-layout ; OK
-  py:setup "C:\\Users\\Agnes\\AppData\\Local\\Programs\\Python\\Python37\\python.exe"
-  output-show "   id       quantity      due date  "
-  output-show "------------------------------------"
-  generate-order 50
-  duplicate-data-item-for-assignment
-  assign-order-to-pod
+  sort-order ; ganti ke continuous order nanti
   selected-pod
   place-agv ; OK
-;  assigning
+  assigning
   reset-ticks
   tick
 end
 
+to initialization
+  set path py:python
+  set acceleration-value 0.0625
+end
+
 to go
-  ask AGVs [let n who (ifelse
+  ask AGVs [let n who  (ifelse
     status = "pick-pod" [pick-pod n]
     status = "bring-to-picking" [bring-to-picking n]
     status = "queuing" [queuing n]
     status = "bring-back" [bring-back n])
-    pen-down]
-  time-count
-  if time mod 100 = 0 [generate-order 1 update-order assign-order-to-pod]
+  pen-down
+  ]
   tick
 end
 ;------------------------------------------------------------ SETUP ---------------------------------------------------------------------;
+
 to delete-file
-  carefully [file-delete"intersection coordinate.txt"][]
+  file-delete "intersection coordinate.txt"
   carefully [file-delete "for pairing.csv"][]
-  carefully [file-delete "orders.csv"][]
-  carefully [file-delete "item in pod.csv"][]
-  carefully [file-delete "temporary item in pod.csv"][]
-end
-
-to duplicate-data-item-for-assignment
-  (py:run
-    "import duplicatepoddata"
-    "result = duplicatepoddata.DuplicatePodData()")
-end
-
-to time-count
-  set time time + 1
-end
-
-to generate-order [num]
-  let n 0
-  loop
-  [ ifelse n < num
-    [ ;random generator
-      let item-type (random 50 + 1)
-      let qty (random 4 + 1)
-      let due (random 4 + 1)
-
-      ;show output
-      ifelse item-type < 10
-      [output-show (word "   0" item-type "          " qty "              " due "     ")]
-      [output-show (word "   " item-type "          " qty "              " due "     ")]
-
-      ;export excel
-      file-open "orders.csv"
-      file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
-      file-close
-      set n n + 1]
-    [ stop]]
-end
-
-to update-order
-  let row []
-  clear-output
-  output-show "   id       quantity      due date  "
-  output-show "------------------------------------"
-  file-open "orders.csv"
-  let result csv:from-row file-read-line
-  while [not file-at-end?]
-  [ set row csv:from-row file-read-line
-
-    let item-type item 0 row
-    let qty item 1 row
-    let due item 2 row
-
-    ;show output
-    ifelse item-type < 10
-    [output-show (word "   0" item-type "          " qty "              " due "     ")]
-    [output-show (word "   " item-type "          " qty "              " due "     ")]]
-
-  file-close
-end
-
-to assign-order-to-pod
-  (py:run
-    "import assignmentOP"
-    "result = assignmentOP.assignOP()")
-  let result py:runresult "result"
-  selected-pods result
 end
 
 to set-layout
-  set time time + 1
   let csvmap csv:from-file (word "layout/" layout-file)
   let n 0
   set total-pod 0
@@ -166,9 +102,7 @@ to set-layout
       itemcode = "pod"
       [ sprout-pods 1
         [ set shape "full square"
-          set color gray
-          set pod-id total-pod
-          place-item pod-id]
+          set color gray stamp die]
         set meaning "podspace"
         set total-pod total-pod + 1
       ]
@@ -389,48 +323,6 @@ to set-layout
   ]
 end
 
-to place-item [m]
-  ask pods with [pod-id = m]
-  [ set items []
-    let n 0
-    loop
-    [ ifelse n < sku-per-pod
-      [ let sku []
-        let item-type random 50 + 1
-        let qty random 15 + 1
-        let due 999
-        set sku insert-item 0 sku item-type
-        set sku insert-item 1 sku qty
-        set sku insert-item 2 sku due
-        set sku insert-item 3 sku qty
-        set items insert-item n items sku
-
-        ;record in excel
-        file-open "item in pod.csv"
-        file-type m file-type "," file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
-        file-close
-
-        set n n + 1]
-      [stop]]]
-end
-
-;to place-item
-;  (py:run
-;    "import podloc"
-;    "loc = podloc.PodLocation()") ;python code -> podloc.py
-;  let podcor py:runresult "loc"
-;  let poditem csv:from-file (word "pod-item/" item-in-pod)
-;  let n 0
-;  loop
-;  [ ifelse n < total-pod
-;    [let m item n podcor
-;     ask pods with [xcor = item 1 m and ycor = (item 0 m * -1)]
-;      [ set pod-id n
-;        set items item n poditem]]
-;    [stop]
-;    set n n + 1 ]
-;end
-
 to switch-empty [xc yc]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout 1
@@ -439,7 +331,7 @@ to switch-empty [xc yc]
     set meaning "empty-space"]
 end
 
-to place-agv
+to place-agv  ;setup agv
   let agvloc csv:from-file (word "AGV/" AGV-location-file)
   let n 0
   loop
@@ -452,7 +344,8 @@ to place-agv
           set size 0.9
 ;          set color gray
           set shape "kiva"
-          set status "bring-back"
+          set status "pick-pod"
+          set speed 0.0625
           set count-down 50
           ( ifelse
             item 2 agvcode = "up"
@@ -468,23 +361,27 @@ to place-agv
     set n n + 1]
 end
 
-to selected-pods [assignment-result]
-  let m 0
+to sort-order
+  py:setup path
+  (py:run
+    "import orders"
+    "orderlist = orders.SortByDueDate()") ;python code -> orders
+  let orders py:runresult "orderlist"
+  output-show "id / quantity / due date"
+  output-show "current"
+  let n 0
   loop
-  [ ifelse m < length assignment-result
-    [ ask pods with [pod-id = item m assignment-result]
-;      [ sprout-jobs 1
-        [ set shape "shelf"
-          set size 1
-          set color 2
-          stamp]
-      set m m + 1]
-    [stop]]
+  [ ifelse n < 2 * AGV-number
+    [ if n = AGV-number
+      [output-show "incoming"]
+      output-show item n orders ]
+    [stop]
+    set n n + 1]
 end
 
 to selected-pod
   let n 0
-  ask n-of task patches with [meaning = "empty-space"]
+  ask n-of task patches with [meaning = "podspace"]
   [ sprout-jobs 1
     [ set shape "shelf"
       set size 1
@@ -494,7 +391,7 @@ to selected-pod
       set n n + 1
       set job-id n
       stamp]]
-;  ask n-of task patches with [pxcor = 5 and pycor = 29]
+;  ask patches with [pxcor = 14 and pycor = 33]
 ;  [ sprout-jobs 1
 ;    [ set shape "shelf"
 ;      set size 1
@@ -532,7 +429,7 @@ to pair-pick-pod [id]
 end
 
 to assigning
-  py:setup "C:\\Users\\Agnes\\AppData\\Local\\Programs\\Python\\Python37\\python.exe"
+  py:setup path
   py:set "robotnode" AGV-number
   py:set "podnode" AGV-number * 2
   (py:run
@@ -550,54 +447,35 @@ to assigning
 end
 
 to pair-empty-loc [id]
+  let looping-agv 0
+  let looping-pod 0
+  let xjob 0 let yjob 0
+  let max-pod-to-assign 0
+  ifelse task > 2 * AGV-number [set max-pod-to-assign (2 * AGV-number)] [set max-pod-to-assign task]
+  loop ;for every AGV
+  [ set looping-pod 0 ;one AGV with each pod
+    ifelse looping-agv < AGV-number
+    [ loop ;for every pod
+      [ ifelse looping-pod < max-pod-to-assign
+        [ ask jobs with [job-id = looping-pod + 1] [set xjob xcor set yjob ycor let n job-id ask AGVs with [AGV-id = id] [set destination n]]
+          starting-intersection id destination
+          ending-intersection id destination
+          file-open "for pairing.csv"
+          file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
+          file-close]
+        [stop]
+        set looping-pod looping-pod + 1]]
+    [stop]
+    set looping-agv looping-agv + 1
+  ]
+
   ask one-of jobs with [status = 0] [set status 1 let n job-id ask AGVs with [AGV-id = id] [set destination n]]
-  starting-intersection-return id destination
-  ending-intersection-return id destination
+  starting-intersection id destination
+  ending-intersection id destination
 
   ;check start&end
-;  ask AGVs with [AGV-id = id] [ let n xstart let m ystart let o xend let p yend let q color ask patches with [pxcor = n and pycor = m] [set pcolor q]
-;  ask patches with [pxcor = o and pycor = p] [set pcolor q]]
-end
-
-to starting-intersection-return [id jobloc]
-  ask AGVs with [AGV-id = id] [set ystart 39 set xstart xcor]
-end
-
-to ending-intersection-return [id jobloc]
-  let xjob 0 let yjob 0 let m 0 let n 0 let o 0
-  ask jobs with [job-id = jobloc] [set xjob xcor set yjob ycor]
-  ask AGVs with [AGV-id = id]
-  [ ;determine xend
-    ask patches with [pxcor = xjob - 1 and pycor = yjob] [if meaning != "podspace" and meaning != "empty-space" [set m 1]]
-    ifelse m = 1 [set xend xjob - 1] [set xend xjob + 1]
-    set o xend
-
-    ;determine yend
-    ask patches with [pxcor = o and pycor = yjob] [if meaning = "road-up" [set n 1]]
-    ifelse n = 0
-    [(ifelse
-      yjob < 14 [set yend 14 set straight-first 1]
-      yjob < 20 and yjob > 14 [set yend 20 set straight-first 1]
-      yjob < 26 and yjob > 20 [set yend 26 set straight-first 1]
-      yjob < 32 and yjob > 26 [set yend 32]
-      [ifelse xcor < xend [set yend 38] [set yend 39]])]
-    [(ifelse
-      yjob < 14 [set yend 8 set straight-first 1]
-      yjob < 20 and yjob > 14 [set yend 14 set straight-first 1]
-      yjob < 26 and ycor > 20 [set yend 20 set straight-first 1]
-      yjob < 32 and yjob > 26 [set yend 26 set straight-first 1]
-      [set yend 32])
-      set u-turn 3
-      set straight-first 1
-    ]
-    set path-status "on-the-way"
-    (ifelse
-      u-turn = 3 and xcor < xend and ycor mod 4 = 2 [set straight-first 2]
-      u-turn = 3 and xcor > xend and ycor mod 4 = 0 [set straight-first 2]
-      xcor > xend and yend mod 4 = 0 [set straight-first 1]
-      xcor < xend and yend mod 4 = 2 and yend != 38 and yend != 39 [set straight-first 1]
-    )
-    ]
+;  ask AGVs [ let n xstart let m ystart let o xend let p yend  ask patches with [pxcor = n and pycor = m] [set pcolor gray]
+;  ask patches with [pxcor = o and pycor = p] [set pcolor red]]
 end
 
 to starting-intersection [id jobloc]
@@ -691,7 +569,7 @@ to change-yend [a]
     a = 0 and yend = 32 [set yend 38])
 end
 
-;------------------------------------------------------------ MOVE ---------------------------------------------------------------------;
+;------------------------------------------------------------ move-agv ---------------------------------------------------------------------;
 to pick-pod [b]
   let xjob 0 let yjob 0
   ask AGVs with [who = b]
@@ -708,17 +586,17 @@ to go-to-aisle [yjob]
   ;ROBOT LOCATION BELOW THE POD
   ifelse xcor != xstart
   [(ifelse
-    xcor < xstart and heading = 270 [move-to patch-ahead 0 rt 180 not-collide]
-    xcor > xstart and heading = 90 [move-to patch-ahead 0 rt 180 not-collide]
-    [not-collide])
+    xcor < xstart and heading = 270 [move-to patch-ahead 0 rt 180 move-agv ]
+    xcor > xstart and heading = 90 [move-to patch-ahead 0 rt 180 move-agv ]
+    [move-agv])
     ifelse in-one-block? AGV-id destination and ycor = yjob [set path-status "reaching-destination"] [set path-status "go-to-aisle"]]
   [ let m 0
     ask patch-here [if meaning = "road-down" [set m 1]]
     ( ifelse
-      m = 1 and heading = 270 [move-to patch-ahead 0 lt 90 not-collide]
-      m = 1 and heading = 90 [move-to patch-ahead 0 rt 90 not-collide]
-      m = 0 and heading = 270 [move-to patch-ahead 0 rt 90 not-collide]
-      m = 0 and heading = 90 [move-to patch-ahead 0 lt 90 not-collide])
+      m = 1 and heading = 270 [move-to patch-ahead 0 lt 90 move-agv ]
+      m = 1 and heading = 90 [move-to patch-ahead 0 rt 90 move-agv ]
+      m = 0 and heading = 270 [move-to patch-ahead 0 rt 90 move-agv ]
+      m = 0 and heading = 90 [move-to patch-ahead 0 lt 90 move-agv])
     ifelse in-one-block? AGV-id destination [set path-status "reaching-destination"] [set path-status "on-the-way"]]
 end
 
@@ -727,16 +605,15 @@ to on-the-way
   ask patch-here [if meaning = "intersection" [set m 1]]
   ifelse m = 1
   [( ifelse
-    xcor = xstart and ycor = ystart and right-way? [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 not-collide] [move-to patch-ahead 0 rt 90 not-collide]]
-    going-further? [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 not-collide] [move-to patch-ahead 0 rt 90 not-collide]]
-    end-point? and heading = 90 [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 not-collide] [move-to patch-ahead 0 rt 90 not-collide] set path-status "reaching-destination"]
-    end-point? and heading = 270 [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 not-collide] [move-to patch-ahead 0 rt 90 not-collide] set path-status "reaching-destination"]
+    xcor = xstart and ycor = ystart and right-way? [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 move-agv ] [move-to patch-ahead 0 rt 90 move-agv ]]
+    going-further? [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 move-agv ] [move-to patch-ahead 0 rt 90 move-agv ]]
+    end-point? and heading = 90 [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 move-agv] [move-to patch-ahead 0 rt 90 move-agv ] set path-status "reaching-destination"]
+    end-point? and heading = 270 [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 move-agv] [move-to patch-ahead 0 rt 90 move-agv ] set path-status "reaching-destination"]
     end-point? and heading = 0 [set path-status "reaching-destination"]
     end-point? and heading = 180 [set path-status "reaching-destination"]
-    turning? [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 not-collide] [move-to patch-ahead 0 rt 90 not-collide]]
-    u-turn = 3 and ycor = yend and not right-turn? [set u-turn 4]
-    [not-collide])]
-  [not-collide]
+    turning? [ifelse can-turn-left? [move-to patch-ahead 0 lt 90 move-agv] [move-to patch-ahead 0 rt 90 move-agv]]
+    [move-agv ])]
+  [move-agv]
 end
 
 to reaching-destination [xj yj]
@@ -745,14 +622,14 @@ to reaching-destination [xj yj]
   ( ifelse
     ycor = yj and xcor != xj and m = 0
     [(ifelse
-      xcor < xj and heading = 0 [move-to patch-ahead 0 rt 90 not-collide]
-      xcor < xj and heading = 180 [move-to patch-ahead 0 lt 90 not-collide]
-      xcor > xj and heading = 0 [move-to patch-ahead 0 lt 90 not-collide]
-      xcor > xj and heading = 180 [move-to patch-ahead 0 rt 90 not-collide]
-      [not-collide])]
+      xcor < xj and heading = 0 [move-to patch-ahead 0 rt 90 move-agv]
+      xcor < xj and heading = 180 [move-to patch-ahead 0 lt 90 move-agv]
+      xcor > xj and heading = 0 [move-to patch-ahead 0 lt 90 move-agv]
+      xcor > xj and heading = 180 [move-to patch-ahead 0 rt 90 move-agv]
+      [move-agv])]
     ycor = yj and xcor = xj [set path-status "arrive"]
-    m = 1 [not-collide]
-    [not-collide])
+    m = 1 [move-agv]
+    [move-agv])
 end
 
 to bring-pod-out
@@ -765,12 +642,12 @@ to bring-pod-out
     meaning = "road-up" [set m 2]
     meaning = "road-down" [set m 3])    ]
   (ifelse
-    m = 0 [not-collide]
-    m = 1 [move-to patch-ahead 0 lt 180 not-collide]
-    m = 2 and heading = 270 [move-to patch-ahead 0 rt 90 not-collide set status "bring-to-picking"]
-    m = 2 and heading = 90 [move-to patch-ahead 0 lt 90 not-collide set status "bring-to-picking"]
-    m = 3 and heading = 270 [move-to patch-ahead 0 lt 90 not-collide set status "bring-to-picking"]
-    m = 3 and heading = 90 [move-to patch-ahead 0 rt 90 not-collide set status "bring-to-picking"])
+    m = 0 [move-agv]
+    m = 1 [move-to patch-ahead 0 lt 180 move-agv]
+    m = 2 and heading = 270 [move-to patch-ahead 0 rt 90 move-agv set status "bring-to-picking"]
+    m = 2 and heading = 90 [move-to patch-ahead 0 lt 90 move-agv set status "bring-to-picking"]
+    m = 3 and heading = 270 [move-to patch-ahead 0 lt 90 move-agv set status "bring-to-picking"]
+    m = 3 and heading = 90 [move-to patch-ahead 0 rt 90 move-agv set status "bring-to-picking"])
 end
 
 to bring-to-picking [n]
@@ -779,25 +656,25 @@ to bring-to-picking [n]
   ask AGV n
   [ ifelse m = 1
     [ (ifelse
-      heading = 90 and ycor = 38 and xcor = 7 [move-to patch-ahead 0 lt 90 not-collide]
-      heading = 90 and ycor = 38 and xcor = 13 [move-to patch-ahead 0 lt 90 not-collide]
-      heading = 90 and ycor = 38 and xcor = 19 [move-to patch-ahead 0 lt 90 not-collide]
-      heading = 90 and ycor = 38 and xcor = 25 [move-to patch-ahead 0 lt 90 not-collide]
-      heading = 90 and ycor = 38 and xcor = 31 [move-to patch-ahead 0 lt 90 not-collide]
+      heading = 90 and ycor = 38 and xcor = 7 [move-to patch-ahead 0 lt 90 move-agv]
+      heading = 90 and ycor = 38 and xcor = 13 [move-to patch-ahead 0 lt 90 move-agv]
+      heading = 90 and ycor = 38 and xcor = 19 [move-to patch-ahead 0 lt 90 move-agv]
+      heading = 90 and ycor = 38 and xcor = 25 [move-to patch-ahead 0 lt 90 move-agv]
+      heading = 90 and ycor = 38 and xcor = 31 [move-to patch-ahead 0 lt 90 move-agv]
 
-      heading = 270 and can-turn-right? [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 90 and can-turn-left? [move-to patch-ahead 0 lt 90 not-collide]
-      heading = 0 and xcor = 1 and can-turn-right? [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 180 and can-turn-right? [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 180 and can-turn-left? and xcor != 34 [move-to patch-ahead 0 lt 90 not-collide]
-      heading = 180 and ycor = 8 [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 0 and xcor = 1 and ycor = 38 [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 270 and xcor = 1 and ycor = 8 [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 180 and xcor = 34 and ycor = 8 [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 90 and xcor = 34 and ycor = 38 [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 270 and xcor = 1 [move-to patch-ahead 0 rt 90 not-collide]
-      heading = 90 and xcor = 34 [move-to patch-ahead 0 rt 90 not-collide]
-      [not-collide])]
+      heading = 270 and can-turn-right? [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 90 and can-turn-left? [move-to patch-ahead 0 lt 90 move-agv]
+      heading = 0 and xcor = 1 and can-turn-right? [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 180 and can-turn-right? [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 180 and can-turn-left? and xcor != 34 [move-to patch-ahead 0 lt 90 move-agv]
+      heading = 180 and ycor = 8 [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 0 and xcor = 1 and ycor = 38 [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 270 and xcor = 1 and ycor = 8 [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 180 and xcor = 34 and ycor = 8 [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 90 and xcor = 34 and ycor = 38 [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 270 and xcor = 1 [move-to patch-ahead 0 rt 90 move-agv]
+      heading = 90 and xcor = 34 [move-to patch-ahead 0 rt 90 move-agv]
+      [move-agv])]
 
     [(ifelse
       ycor = 43 and  xcor = 7 [set status "queuing"]
@@ -805,39 +682,28 @@ to bring-to-picking [n]
       ycor = 43 and  xcor = 19 [set status "queuing"]
       ycor = 43 and  xcor = 25 [set status "queuing"]
       ycor = 43 and  xcor = 31 [set status "queuing"]
-      [not-collide])]]
+      [move-agv])]]
 end
 
 to queuing [n]
   ask AGV n
   [(ifelse
-    ycor = 45 and xcor mod 6 = 1 and heading = 0 [move-to patch-ahead 0 lt 90 not-collide]
+    ycor = 45 and xcor mod 6 = 1 and heading = 0 [move-to patch-ahead 0 lt 90 move-agv]
     ycor = 45 and xcor mod 6 = 4 [stay]
-    [not-collide])
+    [move-agv])
     ]
 end
 
-to not-collide
-  let AGV-ahead one-of AGVs-on patch-ahead 1
-  if AGV-ahead = nobody  [fd 1]
-end
-
-to bring-back [b]
-  let xjob 0 let yjob 0
-  ask AGVs with [who = b]
-  [ let n destination
-    ask jobs with [job-id = n] [set xjob xcor set yjob ycor]
-    ( ifelse
-      path-status = "reaching-destination" [reaching-destination xjob yjob]
-      path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask jobs with [job-id = n][switch-empty xcor ycor die] stop])]
+to bring-back [n]
+  ask AGV n
+  [stop]
 end
 
 to stay1
   set count-down count-down - 1   ;decrement-timer
   if count-down = 0
     [
-      not-collide
+      move-agv
       set label ""
       reset-count-down
       set status "bring-to-picking"
@@ -850,7 +716,7 @@ to stay
   if count-down = 0
     [
       move-to patch-ahead 0 lt 90
-      not-collide
+      move-agv
       set label ""
       reset-count-down
       set status "bring-back"
@@ -905,28 +771,14 @@ to-report going-further?
 end
 
 to-report turning?
-  if straight-first = 1 and xcor = xstart and ycor = ystart [report false]
-  if straight-first = 1 and xcor = xstart and ycor = ystart - 1 [report false]
-
-;  if straight-first
-
-  if u-turn = 3 and straight-first = 1 and ycor != yend [report false]
-
-  if straight-first = 2 and ycor = yend [report true]
-
   ;direct manhattan
-  if xcor = xstart and ycor != ystart and xcor != xend and ycor = yend and right-turn? and straight-first != 2 [report true]
-  if xcor != xstart and ycor = ystart and xcor = xend and ycor != yend and right-turn? and straight-first != 2  [report true]
-  if xcor = xstart and ycor = ystart and xcor != xend and ycor = yend and right-turn? and straight-first != 2  [report true]
+  if xcor = xstart and ycor != ystart and xcor != xend and ycor = yend and right-turn? [report true]
+  if xcor != xstart and ycor = ystart and xcor = xend and ycor != yend and right-turn? [report true]
+  if xcor = xstart and ycor = ystart and xcor != xend and ycor = yend and right-turn? [report true]
 
   ;can't turn with direct manhattan, need to turn before reaching start&end point intersection
   if xcor = xstart and right-turn? [report true]
   if xcor = xend and right-turn? [report true]
-
-  if xcor != xstart and ycor != ystart and xcor != xend and ycor = yend and right-turn? [report true]
-  if xcor != xstart and ycor != ystart and xcor = xend and ycor != yend and right-turn? [report true]
-
-  if u-turn = 4 and right-turn? and going-further? [report true]
 
   if corner? [report true]
   report false
@@ -945,7 +797,6 @@ to-report corner? ;corner warehouse
   if heading = 90 and xcor = 34 [report true]
   if heading = 180 and ycor = 8 and xcor = 34 [report true]
   if heading = 0 and ycor = 38 and xcor = 1 [report true]
-  if heading = 270 and xcor = 4 and ycor = 39 [report true]
   report false
 end
 
@@ -971,7 +822,6 @@ to-report can-turn-right?
   if heading = 90 and xcor mod 2 = 0 [report true]
   if heading = 0 and abs(pycor) mod 4 = 2 [report true]
   if heading = 180 and abs(pycor) mod 4 = 0 [report true]
-  if heading = 180 and pycor = 39 [report true]
   if meaning = "cornerintersection" [report true]
   report false
 end
@@ -984,6 +834,29 @@ to-report can-turn-left?
   if heading = 0 and pycor = 39 [report true]
   if heading = 180 and pycor = 7 [report true]
   report false
+end
+
+;--------------------Mobility for Bot-----------------------------
+to speed-up
+  set speed speed + acceleration-value
+end
+
+to slow-down
+  set speed speed - acceleration-value
+end
+
+to rotate [id]
+end
+
+to move-agv
+  let AGV-ahead one-of AGVs-on patch-ahead 1
+;  ask AGVs [
+;    ifelse status = "pick-pod"
+;    [set speed speed = 0.5
+;      if AGV-ahead = nobody [fd 0.5]]
+;    [if AGV-ahead = nobody  [fd 0.0625]]
+;  ]
+  if AGV-ahead = nobody  [fd speed]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -1030,7 +903,7 @@ INPUTBOX
 888
 162
 AGV-location-file
-AGV set 2.csv
+AGV set 1.csv
 1
 0
 String
@@ -1079,10 +952,10 @@ order set 1.csv
 String
 
 OUTPUT
-894
-21
-1291
-616
+1110
+61
+1426
+388
 11
 
 INPUTBOX
@@ -1112,11 +985,11 @@ INPUTBOX
 365
 888
 425
-sku-per-pod
-2.0
+pod's-max-item-type
+5
 1
 0
-Number
+String
 
 BUTTON
 49
@@ -1136,15 +1009,15 @@ NIL
 1
 
 SLIDER
-737
-435
-862
-468
+899
+146
+1024
+179
 task
 task
 0
 50
-5.0
+20.0
 1
 1
 NIL
@@ -1283,11 +1156,6 @@ false
 0
 Circle -7500403 true true 0 0 300
 Circle -16777216 true false 30 30 240
-
-circle 3
-true
-0
-Circle -7500403 true true 96 96 108
 
 cow
 false
@@ -1706,7 +1574,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
