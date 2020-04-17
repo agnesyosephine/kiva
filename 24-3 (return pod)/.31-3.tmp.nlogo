@@ -129,9 +129,9 @@ to generate-order [num]
       let due (random 4 + 1)
 
       ;show output
-      ifelse item-type < 10
-      [output-show (word "   0" item-type "          " qty "              " due "     ")]
-      [output-show (word "   " item-type "          " qty "              " due "     ")]
+;      ifelse item-type < 10
+;      [output-show (word "   0" item-type "          " qty "              " due "     ")]
+;      [output-show (word "   " item-type "          " qty "              " due "     ")]
 
       ;export excel
       file-open "orders.csv"
@@ -168,6 +168,7 @@ to assign-order-to-pod
     "import assignmentOP"
     "result = assignmentOP.assignOP()")
   let result py:runresult "result"
+
   selected-pods result
 end
 
@@ -627,7 +628,7 @@ to pair-empty-loc [id]
   let available-AGV 0
   ask AGVs with [availability = 0] [set available-AGV available-AGV + 1] ;print AGV-id]
   loop ;for every AGV
-  [ set looping-pod 0 ;one AGV with each pod
+;  [ set looping-pod 0 ;one AGV with each pod
     ifelse looping-agv < AGV-number
     [ loop ;for every pod
       [ ifelse looping-pod < max-pod-to-assign
@@ -1134,7 +1135,7 @@ AGV-number
 AGV-number
 0
 50
-5.0
+1.0
 1
 1
 NIL
@@ -1234,7 +1235,7 @@ task
 task
 0
 50
-5.0
+6.0
 1
 1
 NIL
