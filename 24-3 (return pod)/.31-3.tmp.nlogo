@@ -218,7 +218,7 @@ to set-layout
       [ set pcolor gray
         set meaning "intersection"
         set intersection-id n
-        file-open "intersection coordinate.txt"
+;        file-open "intersection coordinate.txt"
         file-type "\n" file-write pxcor file-write pycor file-write intersection-id
         file-close
         set n n + 1
@@ -628,21 +628,15 @@ to pair-empty-loc [id]
   let available-AGV 0
   ask AGVs with [availability = 0] [set available-AGV available-AGV + 1] ;print AGV-id]
   loop ;for every AGV
-;  [ set looping-pod 0 ;one AGV with each pod
-    ifelse looping-agv < AGV-number
-    [ loop ;for every pod
-      [ ifelse looping-pod < max-pod-to-assign
-        [ ask one-of emptys [set xjob xcor set yjob ycor let n empty-id ask AGVs with [AGV-id = id] [set destination n]]
-          starting-intersection-return id destination
-          ending-intersection-return id destination
-          file-open "for pairing.csv"
-          file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
-          file-close]
-        [stop]
-        set looping-pod looping-pod + 1]]
-    [stop]
-    set looping-agv looping-agv + 1
-  ]
+  [ ifelse looping-agv < AGV-number
+    [ ask emptys [set xjob xcor set yjob ycor let n empty-id ask AGVs with [AGV-id = id] [set destination n
+      starting-intersection-return id destination
+      ending-intersection-return id destination
+      file-open "for pairing.csv"
+      file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
+      file-close]]
+      set looping-agv looping-agv + 1]
+    [stop]]
 
   ;check start&end
 ;  ask AGVs with [AGV-id = id] [ let n xstart let m ystart let o xend let p yend let q color ask patches with [pxcor = n and pycor = m] [set pcolor q]
