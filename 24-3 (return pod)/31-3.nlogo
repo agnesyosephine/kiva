@@ -56,6 +56,7 @@ AGVs-own
   straight-first
   availability
   carrying-pod-id
+  next-empty-id
 ]
 
 to setup
@@ -79,11 +80,12 @@ to go
     status = "pick-pod" [pick-pod n]
     status = "bring-to-picking" [bring-to-picking n]
     status = "queuing" [queuing n]
-    status = "bring-back" [bring-back n])
+    status = "bring-back" [bring-back n]
+    status = "stop" [stop])
     pen-down]
   time-count
   virtual-replenish
-  if time mod 100 = 0 [generate-order 1 update-order assign-order-to-pod]
+;  if time mod 100 = 0 and time <= 1000 [generate-order 5 update-order assign-order-to-pod]
   tick
 end
 ;------------------------------------------------------------ SETUP ---------------------------------------------------------------------;
@@ -430,28 +432,38 @@ to place-item [m]
       [stop]]]
 end
 
-to switch-empty [xc yc]
+to switch-empty [xc yc id]
+  let n 0
+  ask AGVs with [who = id] [set n next-empty-id]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout-emptys 1
     [ set shape "empty space"
       set color gray
       set total-empty total-empty + 1
-      set empty-id total-empty]
+      set empty-id n]
     set meaning "empty-space"]
   ask pods with [xcor = xc and ycor = yc]
   [set shape "empty space" set color gray]
 end
 
-to switch-pod [xc yc]
+to switch-pod [xc yc id]
+  let transfer-pod-id 0
+  let transfer-empty-id empty-id
+  let items_ 0 let status_ 0 let replenish_ 0
+  ask AGVs with [who = id] [set transfer-pod-id carrying-pod-id set next-empty-id transfer-empty-id]
+  ask pods with [pod-id = transfer-pod-id] [set pod-id -1 set items_ items set status_ status set replenish_ replenish]
   ask patches with [pxcor = xc and pycor = yc]
-  [ sprout-emptys 1
-    [ set shape "empty space"
+  [ sprout-pods 1
+    [ set shape "full square"
       set color gray
-      set total-empty total-empty + 1
-      set empty-id total-empty]
-    set meaning "empty-space"]
-  ask pods with [xcor = xc and ycor = yc]
-  [set shape "empty space" set color gray]
+      set pod-id transfer-pod-id
+      set items items_
+      set status status_
+      set replenish replenish_]
+    set meaning "podspace"]
+  ask pods with [pod-id = -1][die]
+  set total-empty total-empty - 1
+  die
 end
 
 to place-agv
@@ -469,6 +481,7 @@ to place-agv
           set shape "kiva"
           set status "pick-pod"
           set count-down 50
+          set next-empty-id (total-empty + AGV-id + 1)
           ( ifelse
             item 2 agvcode = "up"
             [ set heading 0 ]
@@ -493,24 +506,6 @@ to selected-pods [assignment-result]
       [ set shape "shelf"
         set size 1
         set color 2
-        stamp
-        set x xcor
-        set y ycor]
-      set m m + 1]
-    [stop]]
-end
-
-to selected-emptys [assignment-result]
-  let m 0
-  let x 0
-  let y 0
-  loop
-  [ ifelse m < length assignment-result
-    [ ask pods with [pod-id = item m assignment-result]
-      [ set shape "shelf"
-        set size 1
-        set color 2
-        stamp
         set x xcor
         set y ycor]
       set m m + 1]
@@ -543,58 +538,63 @@ to pair-pick-pod [id]
 end
 
 to pair-next [id]
+  ifelse not any? pods with [shape = "shelf"];no selected pod left
+  [ask AGVs with [AGV-id = id][set status "stop"]]
   ;for assignment
-  let looping-agv 0
-  let looping-pod 0
-  let xjob 0 let yjob 0
-  let max-pod-to-assign 0
-  ifelse task > 2 [set max-pod-to-assign 2] [set max-pod-to-assign task]
-  set looping-pod 0 ;one AGV with each pod
-  loop ;for every pod
-  [ ifelse looping-pod < max-pod-to-assign
-    [ ask one-of pods [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
-      starting-intersection id destination
-      ending-intersection id destination
-      file-open "for pairing.csv"
-      file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
-      file-close
-      set looping-pod looping-pod + 1]
-    [stop]]
+  [ let looping-agv 0
+    let looping-pod 0
+    let xjob 0 let yjob 0
+    let max-pod-to-assign 0
+    ifelse task > 2 [set max-pod-to-assign 2] [set max-pod-to-assign task]
+    set looping-pod 0 ;one AGV with each pod
+    loop ;for every pod
+    [ ifelse looping-pod < max-pod-to-assign
+      [ ask one-of pods with [shape = "shelf"] [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
+        starting-intersection id destination
+        ending-intersection id destination
+        file-open "for pairing.csv"
+        file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
+        file-close
+        set looping-pod looping-pod + 1]
+      [stop]]]
 end
 
 to assigning [num]
-  let pod-to-assign 0
-  let available-AGV 0
-  ( ifelse
-    num = -1 and task > AGV-number [set pod-to-assign AGV-number * 2 set available-AGV AGV-number]
-    num = -1 and task <= AGV-number [set pod-to-assign task set available-AGV AGV-number]
-    num != -1 and task > 1 [set pod-to-assign 2 set available-AGV 1]
-    num != -1 and task <= 1 [set pod-to-assign task set available-AGV 1])
-  py:set "robotnode" available-AGV
-  py:set "podnode" pod-to-assign
-  (py:run
-    "import assignmentRP"
-    "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
-  let result py:runresult "result"
-  print(result)
-  let assignment table:from-list result
+  if any? pods with [shape = "shelf"];no selected pod left
+  [let pod-to-assign 0
+    let available-AGV 0
+    ( ifelse
+      num = -1 and task > AGV-number [set pod-to-assign AGV-number * 2 set available-AGV AGV-number]
+      num = -1 and task <= AGV-number [set pod-to-assign task set available-AGV AGV-number]
+      num != -1 and task > 1 [set pod-to-assign 2 set available-AGV 1]
+      num != -1 and task <= 1 [set pod-to-assign task set available-AGV 1])
+    py:set "robotnode" available-AGV
+    py:set "podnode" pod-to-assign
+    (py:run
+      "import assignmentRP"
+      "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
+    let result py:runresult "result"
+    print(result)
+    let assignment table:from-list result
 
-  ;selecting
-  ifelse num = 0
-  [ ask AGVs [ let a AGV-id let b 0 set availability 1 print num
-    ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
-    starting-intersection AGV-id destination
-    ending-intersection AGV-id destination]]
-  [ ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1 print(AGV-id) print num
-    ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
-    starting-intersection AGV-id destination
-    ending-intersection AGV-id destination]]
-  carefully [file-delete "for pairing.csv"][]
+    ;selecting
+    ifelse num = -1
+    [ ask AGVs [ let a AGV-id let b 0 set availability 1
+      ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
+      starting-intersection AGV-id destination
+      ending-intersection AGV-id destination
+      set carrying-pod-id destination]]
+    [ ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1
+      ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
+      starting-intersection AGV-id destination
+      ending-intersection AGV-id destination
+      set carrying-pod-id destination]]
+    carefully [file-delete "for pairing.csv"][]]
 end
 
 to assigning-empty
   let available-AGV 0
-  ask AGVs with [availability = 0][set available-AGV available-AGV + 1] print available-AGV print total-empty
+  ask AGVs with [availability = 0][set available-AGV available-AGV + 1]
   py:set "robotnode" available-AGV
   py:set "podnode" total-empty
   (py:run
@@ -619,17 +619,15 @@ to pair-empty-loc [id]
   let xjob 0 let yjob 0
   let max-pod-to-assign total-empty
   let available-AGV 0
-  ask AGVs with [availability = 0] [set available-AGV available-AGV + 1] ;print AGV-id]
-  loop ;for every AGV
-  [ ifelse looping-agv < AGV-number
-    [ ask emptys [set xjob xcor set yjob ycor let n empty-id ask AGVs with [AGV-id = id] [set destination n
+  ask AGVs with [availability = 0] [set available-AGV available-AGV + 1]
+  ask emptys [set xjob xcor set yjob ycor let n empty-id
+    ask AGVs with [AGV-id = id]
+    [ set destination n
       starting-intersection-return id destination
       ending-intersection-return id destination
       file-open "for pairing.csv"
       file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
       file-close]]
-      set looping-agv looping-agv + 1]
-    [stop]]
 
   ;check start&end
 ;  ask AGVs with [AGV-id = id] [ let n xstart let m ystart let o xend let p yend let q color ask patches with [pxcor = n and pycor = m] [set pcolor q]
@@ -644,7 +642,8 @@ to ending-intersection-return [id jobloc]
   let xjob 0 let yjob 0 let m 0 let n 0 let o 0
   ask emptys with [empty-id = jobloc] [set xjob xcor set yjob ycor]
   ask AGVs with [AGV-id = id]
-  [ ;determine xend
+  [ set u-turn 0 set straight-first 0 ;return value
+    ;determine xend
     ask patches with [pxcor = xjob - 1 and pycor = yjob] [if meaning != "podspace" and meaning != "empty-space" [set m 1]]
     ifelse m = 1 [set xend xjob - 1] [set xend xjob + 1]
     set o xend
@@ -668,8 +667,8 @@ to ending-intersection-return [id jobloc]
       set straight-first 1
     ]
     (ifelse
-      u-turn = 3 and xcor < xend and ycor mod 4 = 2 [set straight-first 2]
-      u-turn = 3 and xcor > xend and ycor mod 4 = 0 [set straight-first 2]
+      u-turn = 3 and xcor < xend and yend mod 4 = 2 [set straight-first 1]
+      u-turn = 3 and xcor > xend and yend mod 4 = 0 [set straight-first 1]
       xcor > xend and yend mod 4 = 0 [set straight-first 1]
       xcor < xend and yend mod 4 = 2 and yend != 38 and yend != 39 [set straight-first 1])
     set path-status "on-the-way"]
@@ -712,7 +711,8 @@ to ending-intersection [id jobloc]
   let xjob 0 let yjob 0 let a 0 let b 0
   ask pods with [pod-id = jobloc] [set xjob xcor set yjob ycor]
   ask AGVs with [AGV-id = id]
-  [ let n xjob set u-turn 0
+  [ set u-turn 0 set straight-first 0 ;return value
+    let n xjob set u-turn 0
     ;ROBOT COME FROM UP DIRECTION
     ifelse ycor > yjob
     [ set a 1
@@ -776,7 +776,7 @@ to pick-pod [b]
       path-status = "go-to-aisle" [go-to-aisle yjob]
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [bring-pod-out ask pods with [pod-id = n and shape != "empty space"][switch-empty xcor ycor]])]
+      path-status = "arrive" [bring-pod-out ask pods with [pod-id = n and shape != "empty space"][switch-empty xcor ycor b]])]
 end
 
 to go-to-aisle [yjob]
@@ -906,7 +906,7 @@ to bring-back [b]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-empty xcor ycor] set status "pick-pod" pair-next AGV-id assigning AGV-id])]
+      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xcor ycor b] set status "pick-pod" pair-next AGV-id assigning AGV-id])]
 end
 
 to stay1
@@ -931,7 +931,7 @@ to stay
       set status "bring-back"
       if availability = 0
       [ ask AGVs with [availability = 0]
-        [ pair-empty-loc AGV-id]
+        [pair-empty-loc AGV-id]
         assigning-empty]
     ]
 end
@@ -990,7 +990,7 @@ to-report turning?
 
   if u-turn = 3 and straight-first = 1 and ycor != yend [report false]
 
-  if straight-first = 2 and ycor = yend [report true]
+  if straight-first = 2 and ycor = yend and right-turn? [report true]
 
   ;direct manhattan
   if xcor = xstart and ycor != ystart and xcor != xend and ycor = yend and right-turn? and straight-first != 2 [report true]
@@ -1122,7 +1122,7 @@ AGV-number
 AGV-number
 0
 50
-1.0
+5.0
 1
 1
 NIL
@@ -1222,7 +1222,7 @@ task
 task
 0
 50
-6.0
+14.0
 1
 1
 NIL
