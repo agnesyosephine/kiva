@@ -17,6 +17,8 @@ globals
   finish-order
   cycle-time
   order-count
+  stopping
+  Stop-Que
 ]
 
 emptys-own
@@ -37,6 +39,7 @@ pods-own
   pod-id
   status
   replenish
+  rep-lead-time
 ]
 
 patches-own
@@ -48,7 +51,6 @@ patches-own
 AGVs-own
 [
   count-down
-  count-down2
   status
   path-status
   AGV-id
@@ -62,6 +64,8 @@ AGVs-own
   availability
   carrying-pod-id
   next-empty-id
+  previous-x
+  previous-y
 ]
 
 to setup
@@ -82,17 +86,18 @@ end
 to go
   ;robot movement
   ask AGVs with [shape = "kiva"]
-    [let who-id who (ifelse
-      status = "pick-pod" [pick-pod who-id]
+    [let who-id who st (ifelse
+      status = "pick-pod" [pick-pod who-id 0]
       status = "bring-to-picking" [bring-to-picking who-id]
       status = "queuing" [queuing who-id]
       status = "bring-back" [bring-back who-id]
       status = "stop" [stop])]
+  ask pods with [replenish = 1][lead-time-count-down]
+  checking
   detect-traffic
   ;count output
-  if time mod 100 = 0 [finished-order count-cycle-time]
+  if time mod 3600 = 3599 [finished-order count-cycle-time 3599]
   ;order & replenishment
-  if time mod 1000 = 0 [virtual-replenish 5]
   if time = next-order-time + 2 [generate-order 5 update-order assign-order-to-pod update-order next-incoming-order]
   check-pod
   time-count
@@ -104,6 +109,8 @@ to delete-file
   carefully [file-delete "orders.csv"][]
   carefully [file-delete "item in pod.csv"][]
   carefully [file-delete "Assigned_order_to_pod.csv"][]
+  carefully [file-delete "avg cycle time.csv"][]
+  carefully [file-delete "throughput rate.csv"][]
   file-open "Assigned_order_to_pod.csv" file-type "" file-close
 end
 
@@ -125,7 +132,8 @@ to set-layout
         [ set shape "full square"
           set color sky
           set pod-id total-pod
-          place-item pod-id]
+          place-item pod-id
+          set rep-lead-time 100]
         set meaning "podspace"
         set total-pod total-pod + 1
       ]
@@ -342,6 +350,36 @@ to set-layout
   ]
 end
 
+to place-agv
+  let agvloc csv:from-file (word "AGV/" AGV-location-file)
+  let n 0
+  loop
+  [ ifelse n < AGV-number
+    [ let agvcode item n agvloc
+      ask patches with [pxcor = item 0 agvcode and pycor = item 1 agvcode]
+      [ sprout-AGVs 1
+        [ set AGV-id n
+          set size 0.9
+          set color 9
+          set availability 1
+          set shape "kiva"
+          set status "pick-pod"
+          set count-down round(random-poisson 15)
+          set next-empty-id (total-empty + AGV-id + 1)
+          ( ifelse
+            item 2 agvcode = "up"
+            [ set heading 0 ]
+            item 2 agvcode = "down"
+            [ set heading 180 ]
+            item 2 agvcode = "right"
+            [ set heading 90 ]
+            [ set heading 270 ] )
+          pair-pick-pod AGV-id
+        ] ] ]
+    [stop]
+    set n n + 1]
+end
+
 to place-item [m]
   ask pods with [pod-id = m]
   [ set items []
@@ -368,22 +406,17 @@ to place-item [m]
 end
 
 ;------------------------------------------------------------ ORDER & REPLENISHMENT ---------------------------------------------------------------------;
-to virtual-replenish [num]
-  let all-sku 0
-  let need-replenish 0
-  ask pods with [replenish = 1][set need-replenish need-replenish + 1]
-  if need-replenish >= num [set need-replenish num]
-  ask n-of need-replenish pods with [replenish = 1]
-  [ py:set "pod_id" pod-id
-    (py:run
-      "import virtualRep"
-      "item = virtualRep.VirtualReplenishment(pod_id)")
-    let pod_item_now py:runresult "item"
-    set items pod_item_now]
+to virtual-replenish [id]
+  py:set "pod_id" id
+  (py:run
+    "import virtualRep"
+    "item = virtualRep.VirtualReplenishment(pod_id)")
+  let pod_item_now py:runresult "item"
+  ask pods with [pod-id = pod-id] [set replenish 0 set items pod_item_now]
 end
 
 to next-incoming-order
-  let n round(random-exponential 5)
+  let n round(random-exponential 20)
   set next-order-time time + n
 end
 
@@ -440,15 +473,21 @@ to finished-order
     "import FinishOrder"
     "count = FinishOrder.FinishOrderCount(time,cycle)")
   set finish-order py:runresult "count"
+  file-open "throughput rate.csv"
+  file-type finish-order file-type "\n"
+  file-close
 end
 
-to count-cycle-time
+to count-cycle-time [cycle]
   py:set "time" time
-  py:set "cycle" 100
+  py:set "cycle" cycle
   (py:run
     "import countingThroughput"
     "avg_cycle_time = countingThroughput.countThroughput(time,cycle)")
   set cycle-time py:runresult "avg_cycle_time"
+  file-open "avg cycle time.csv"
+  file-type cycle-time file-type "\n"
+  file-close
 end
 
 ;------------------------------------------------------------ SWITCH POD & EMPTY ---------------------------------------------------------------------;
@@ -498,8 +537,7 @@ to switch-pod [xc yc id]
       set pod-id transfer-pod-id
       set items items_
       set status status_
-      set replenish replenish_
-      set replenish 1]
+      set replenish replenish_]
     set meaning "podspace"]
   ask pods with [pod-id = -1][die]
   ask emptys with [xcor = xc and ycor = yc][die]
@@ -510,39 +548,12 @@ to reduce-qty [pod_id]
   py:set "time" time
   (py:run
     "import reduceQty"
-    "item = reduceQty.reduceQtyInPod(podid,time)")
+    "item = reduceQty.reduceQtyInPod(podid,time)"
+    "import replenishIndicator"
+    "rep = replenishIndicator.replenishmentIndicator(podid)")
   let pod_item_now py:runresult "item"
-  ask pods with [pod-id = pod_id][set items pod_item_now]
-end
-
-to place-agv
-  let agvloc csv:from-file (word "AGV/" AGV-location-file)
-  let n 0
-  loop
-  [ ifelse n < AGV-number
-    [ let agvcode item n agvloc
-      ask patches with [pxcor = item 0 agvcode and pycor = item 1 agvcode]
-      [ sprout-AGVs 1
-        [ set AGV-id n
-          set size 0.9
-          set color 9
-          set availability 1
-          set shape "kiva"
-          set status "pick-pod"
-          set count-down 15
-          set next-empty-id (total-empty + AGV-id + 1)
-          ( ifelse
-            item 2 agvcode = "up"
-            [ set heading 0 ]
-            item 2 agvcode = "down"
-            [ set heading 180 ]
-            item 2 agvcode = "right"
-            [ set heading 90 ]
-            [ set heading 270 ] )
-          pair-pick-pod AGV-id
-        ] ] ]
-    [stop]
-    set n n + 1]
+  let rep py:runresult "rep"
+  ask pods with [pod-id = pod_id][set items pod_item_now set replenish rep]
 end
 
 to selected-pods [assignment-result]
@@ -565,7 +576,7 @@ end
 
 to assign-order-to-pod
   let time_ time
-  if time_ = 1 [ set time_ random-exponential -10]
+  if time_ = 1 [ set time_ round (random-exponential -30)]
   py:set "time" time_
   (py:run
     "import assignmentOP"
@@ -867,7 +878,7 @@ to detect-traffic
 end
 
 ;------------------------------------------------------------ MOVE ---------------------------------------------------------------------;
-to pick-pod [b]
+to pick-pod [b block]
   let xjob 0 let yjob 0
   ask AGVs with [who = b]
   [ let n destination
@@ -875,8 +886,8 @@ to pick-pod [b]
     ( ifelse
       path-status = "go-to-aisle" [go-to-aisle yjob]
       path-status = "reaching-destination" [reaching-destination xjob yjob]
-      path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [bring-pod-out block-road "?" ask pods with [pod-id = n and shape != "empty space"][switch-empty xjob yjob b]])]
+      path-status = "on-the-way" [on-the-way if path-status = "arrive"[set block 1]]
+      path-status = "arrive" [bring-pod-out if block = 1 [block-road "?" AGV-id set block 0] ask pods with [pod-id = n and shape != "empty space"][switch-empty xjob yjob b]])]
 end
 
 to go-to-aisle [yjob]
@@ -995,7 +1006,17 @@ end
 
 to not-collide
   let AGV-ahead one-of AGVs-on patch-ahead 1
-  if AGV-ahead = nobody  [fd 1]
+  let n 0 let heading-ahead abs(heading - 180) let m 0
+  let id AGV-id let AGV-ahead-who 0
+  carefully[ask AGV-ahead [if AGV-id = id [set n 1] if hidden? [set m 1] if heading = heading-ahead [set heading-ahead "deadlock"] set AGV-ahead-who who]][]
+  (ifelse
+    AGV-ahead = nobody or m = 1 [set previous-x xcor set previous-y ycor fd 1]
+    n = 1 [fd 1 ask AGV-ahead [die]]
+    heading-ahead = "deadlock" and n != 1 [resolve who resolve AGV-ahead-who])
+  if AGV-ahead != nobody or n = 1 [
+    if previous-x != xcor or previous-y != ycor
+    [set previous-x xcor set previous-y ycor  ifelse status = "queuing" [set Stop-Que Stop-Que + 1] [set stopping stopping + 1]]]
+  ask AGVs with [shape = "dot"][let status-change 0 let dot-id agv-id ask AGVs with [AGV-id = dot-id][if path-status != "arrive" [set status-change 1]] if status-change = 1 [die]]
 end
 
 to bring-back [id]
@@ -1006,10 +1027,10 @@ to bring-back [id]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart])]
+      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
 end
 
-to block-road [xc]
+to block-road [xc id]
   let yc ycor
   if xc = "?"
   [ set xc xcor
@@ -1018,18 +1039,27 @@ to block-road [xc]
   [ sprout-AGVs 1
     [ set size 0.9
       set color red
-      set shape "dot"]]
+      set shape "dot"
+      set availability 2
+      set AGV-id id
+      set status yc]]
 end
 
-to stay1
-  set count-down count-down - 1   ;decrement-timer
-  if count-down = 0
-    [
-      not-collide
-      set label ""
-      reset-count-down
-      set status "bring-to-picking"
-    ]
+to checking
+  ask AGVs
+  [if xcor = 0 or xcor = 35 [
+    let destination_ destination let under-pod 0 let xc 0 let yc 0
+    ask pods with [pod-id = destination_][set destination_ who set xc xcor set yc ycor]
+    move-to turtle destination_ ]]
+end
+
+to resolve [who-id]
+  let destination_ 0 let under-pod 0 let xc 0 let yc 0
+  ask AGVs with [who = who-id]
+  [ set destination_ destination
+    ask pods with [pod-id = destination_][set destination_ who set xc xcor set yc ycor]
+    ask patch-here [if meaning = "empty-space" or meaning = "podspace" [set under-pod 1]]
+    if under-pod = 1 [ifelse xc = xcor and yc = ycor [ht][move-to turtle destination_ set path-status "arrive"]]]
 end
 
 to stay
@@ -1049,8 +1079,15 @@ to stay
     ]
 end
 
+to lead-time-count-down
+  set rep-lead-time rep-lead-time - 1
+  if rep-lead-time <= 0
+  [ set rep-lead-time 100
+    virtual-replenish pod-id]
+end
+
 to reset-count-down
-  set count-down 15
+  set count-down round(random-poisson 15)
   set label ""
 end
 
@@ -1310,10 +1347,10 @@ sku-per-pod
 Number
 
 BUTTON
-49
-117
-112
-150
+35
+108
+98
+141
 NIL
 go
 T
@@ -1342,7 +1379,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if time mod 100 = 0 [plot finish-order]"
+"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
 
 PLOT
 953
@@ -1360,7 +1397,29 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if time mod 100 = 0 [plot cycle-time]"
+"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot cycle-time]"
+
+MONITOR
+1176
+499
+1278
+544
+Stop & Go
+stopping
+17
+1
+11
+
+MONITOR
+1177
+553
+1278
+598
+Stopping in Que
+Stop-Que
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?

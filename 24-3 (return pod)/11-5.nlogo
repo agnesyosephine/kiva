@@ -402,10 +402,11 @@ to generate-order [num]
       let item-type random type-of-item
       let qty (random-poisson 5) + 1
       let due (random 5) + 1
+      let m round(random-exponential 5)
 
       ;export excel
       file-open "orders.csv"
-      file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
+      file-type item-type file-type "," file-type qty file-type "," file-type due file-type m file-type "\n"
       file-close
       set n n + 1]
     [ stop]]
