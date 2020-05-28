@@ -13,6 +13,10 @@ globals
   pod-size
   pod-list
   time
+  next-order-time
+  finish-order
+  cycle-time
+  order-count
 ]
 
 emptys-own
@@ -58,6 +62,7 @@ AGVs-own
   availability
   carrying-pod-id
   next-empty-id
+  collision
 ]
 
 to setup
@@ -67,7 +72,7 @@ to setup
   py:setup py:python
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
-  generate-order 50
+  generate-order 30
   assign-order-to-pod
   place-agv ; OK
   assigning -1
@@ -76,16 +81,27 @@ to setup
 end
 
 to go
-  ask AGVs [let n who (ifelse
-    status = "pick-pod" [pick-pod n]
-    status = "bring-to-picking" [bring-to-picking n]
-    status = "queuing" [queuing n]
-    status = "bring-back" [bring-back n]
+  ;robot movement
+  ask AGVs [
+  ifelse any? AGVs with [path-status = "avoid-collision"][ask AGVs [stop]]
+;  ask AGVs
+
+    [let who-id who (ifelse
+    path-status = "avoid-collision" [avoid-collision who-id]
+    status = "pick-pod" [pick-pod who-id]
+    status = "bring-to-picking" [bring-to-picking who-id]
+    status = "queuing" [queuing who-id]
+    status = "bring-back" [bring-back who-id]
     status = "stop" [stop])]
-;    pen-down]
-  time-count
+  ]
+  detect-traffic
+  ;count output
+  if time mod 100 = 0 [finished-order count-cycle-time]
+  ;order & replenishment
   if time mod 200 = 0 [virtual-replenish]
-  if time mod 100 = 0 and time <= 1000 [generate-order 5 update-order assign-order-to-pod update-order]
+  if time = next-order-time + 2 [generate-order 5 update-order assign-order-to-pod update-order next-incoming-order]
+  check-pod
+  time-count
   tick
 end
 ;------------------------------------------------------------ SETUP ---------------------------------------------------------------------;
@@ -95,70 +111,6 @@ to delete-file
   carefully [file-delete "item in pod.csv"][]
   carefully [file-delete "Assigned_order_to_pod.csv"][]
   file-open "Assigned_order_to_pod.csv" file-type "" file-close
-end
-
-to virtual-replenish
-  let all-sku 0
-  ask one-of pods with [replenish = 1]
-  [ py:set "pod_id" pod-id
-    (py:run
-      "import virtualRep"
-      "item = virtualRep.VirtualReplenishment(pod_id)")
-    let pod_item_now py:runresult "item"
-    set items pod_item_now]
-end
-
-to time-count
-  set time time + 1
-end
-
-to generate-order [num]
-  let n 0
-  loop
-  [ ifelse n < num
-    [ ;random generator
-      let item-type (random 50 + 1)
-      let qty (random 4 + 1)
-      let due (random 4 + 1)
-
-      ;export excel
-      file-open "orders.csv"
-      file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
-      file-close
-      set n n + 1]
-    [ stop]]
-end
-
-to update-order
-  let row []
-  clear-output
-  output-show "   id       quantity      due date  "
-  output-show "------------------------------------"
-  file-open "orders.csv"
-  if not file-at-end?
-  [let result csv:from-row file-read-line
-    while [not file-at-end?]
-    [ set row csv:from-row file-read-line
-
-      let item-type item 0 row
-      let qty item 1 row
-      let due item 2 row
-
-      ;show output
-      ifelse item-type < 10
-      [output-show (word "   0" item-type "          " qty "              " due "     ")]
-      [output-show (word "   " item-type "          " qty "              " due "     ")]]]
-
-    file-close
-end
-
-to assign-order-to-pod
-  (py:run
-    "import assignmentOP"
-    "result = assignmentOP.assignOP()")
-  set pod-list py:runresult "result"
-
-  selected-pods pod-list
 end
 
 to set-layout
@@ -235,7 +187,7 @@ to set-layout
       itemcode = "L"
       [ set pcolor 9
         sprout 1
-        [ set shape "direction"
+        [ ifelse pycor = 7 or pycor = 8 or pycor = 38 or pycor = 39 [set shape "highway"] [set shape "direction"]
           set color 9
           set heading 270
           stamp die ]
@@ -243,7 +195,7 @@ to set-layout
       itemcode = "R"
       [ set pcolor 9
         sprout 1
-        [ set shape "direction"
+        [ ifelse pycor = 7 or pycor = 8 or pycor = 38 or pycor = 39 [set shape "highway"] [set shape "direction"]
           set color 9
           set heading 90
           stamp die ]
@@ -403,8 +355,8 @@ to place-item [m]
     loop
     [ ifelse n < sku-per-pod
       [ let sku []
-        let item-type random 50 + 1
-        let qty random 15 + 1
+        let item-type random type-of-item
+        let qty (random-poisson 15) + 5
         let due 999
         set sku insert-item 0 sku item-type
         set sku insert-item 1 sku qty
@@ -421,18 +373,120 @@ to place-item [m]
       [stop]]]
 end
 
+;------------------------------------------------------------ ORDER & REPLENISHMENT ---------------------------------------------------------------------;
+to virtual-replenish
+  let all-sku 0
+  ask one-of pods with [replenish = 1]
+  [ py:set "pod_id" pod-id
+    (py:run
+      "import virtualRep"
+      "item = virtualRep.VirtualReplenishment(pod_id)")
+    let pod_item_now py:runresult "item"
+    set items pod_item_now]
+end
+
+to next-incoming-order
+  let n round(random-exponential 5)
+  set next-order-time time + n
+end
+
+to time-count
+  set time time + 1
+end
+
+to generate-order [num]
+  let n 0
+  loop
+  [ ifelse n < num
+    [ ;random generator
+      let item-type random type-of-item
+      let qty (random-poisson 5) + 1
+      let due (random 5) + 1
+      let m round(random-exponential 5)
+
+      ;export excel
+      file-open "orders.csv"
+      file-type item-type file-type "," file-type qty file-type "," file-type due file-type m file-type "\n"
+      file-close
+      set n n + 1]
+    [ stop]]
+end
+
+to update-order
+  let row []
+  clear-output
+  output-show "   id       quantity      due date  "
+  output-show "------------------------------------"
+  file-open "orders.csv"
+  if not file-at-end?
+  [let result csv:from-row file-read-line
+    while [not file-at-end?]
+    [ set row csv:from-row file-read-line
+
+      let item-type item 0 row
+      let qty item 1 row
+      let due item 2 row
+
+      ;show output
+      ifelse item-type < 10
+      [output-show (word "   0" item-type "          " qty "              " due "     ")]
+      [output-show (word "   " item-type "          " qty "              " due "     ")]]]
+
+    file-close
+end
+
+;------------------------------------------------------------ OUTPUT ---------------------------------------------------------------------;
+
+to finished-order
+  py:set "time" time
+  py:set "cycle" 100
+  (py:run
+    "import FinishOrder"
+    "count = FinishOrder.FinishOrderCount(time,cycle)")
+  set finish-order py:runresult "count"
+end
+
+to count-cycle-time
+  py:set "time" time
+  py:set "cycle" 100
+  (py:run
+    "import countingThroughput"
+    "avg_cycle_time = countingThroughput.countThroughput(time,cycle)")
+  set cycle-time py:runresult "avg_cycle_time"
+end
+
+;------------------------------------------------------------ SWITCH POD & EMPTY ---------------------------------------------------------------------;
+
+to check-pod
+  let n 0
+  ask patches with [meaning = "podspace" or meaning = "empty-space"]
+  [ let xc pxcor let yc pycor
+    if not any? turtles with [xcor = xc and ycor = yc]
+    [ sprout-emptys 1
+      [ set shape "empty space"
+        set color 9
+        set total-empty total-empty + 1
+        while [any? emptys with [empty-id = n]]
+          [ set n n + 1]
+        set empty-id n]
+      set meaning "empty-space"]]
+end
+
 to switch-empty [xc yc id]
   let n 0
   ask AGVs with [who = id] [set n next-empty-id]
   ask patches with [pxcor = xc and pycor = yc]
-  [ sprout-emptys 1
-    [ set shape "empty space"
-      set color 9
-      set total-empty total-empty + 1
-      set empty-id n]
-    set meaning "empty-space"]
-  ask pods with [xcor = xc and ycor = yc]
-  [set shape "empty space" set color 9]
+  [ if not any? emptys with [xcor = xc and ycor = yc]
+    [ sprout-emptys 1
+      [ set shape "empty space"
+        set color 9
+        set total-empty total-empty + 1
+        while [any? emptys with [empty-id = n]]
+          [ set n n + 1]
+        set empty-id n]
+      set meaning "empty-space"]
+    ask pods with [xcor = xc and ycor = yc]
+    [set shape "empty space" set color 9]]
 end
 
 to switch-pod [xc yc id]
@@ -444,7 +498,7 @@ to switch-pod [xc yc id]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout-pods 1
     [ set shape "full square"
-      set color 9
+      set color sky
       set pod-id transfer-pod-id
       set items items_
       set status status_
@@ -452,16 +506,16 @@ to switch-pod [xc yc id]
       set replenish 1]
     set meaning "podspace"]
   ask pods with [pod-id = -1][die]
-  die
+  ask emptys with [xcor = xc and ycor = yc][die]
 end
 
 to reduce-qty [pod_id]
   py:set "podid" pod_id
+  py:set "time" time
   (py:run
     "import reduceQty"
-    "item = reduceQty.reduceQtyInPod(podid)")
+    "item = reduceQty.reduceQtyInPod(podid,time)")
   let pod_item_now py:runresult "item"
-
   ask pods with [pod-id = pod_id][set items pod_item_now]
 end
 
@@ -479,7 +533,7 @@ to place-agv
           set availability 1
           set shape "kiva"
           set status "pick-pod"
-          set count-down 50
+          set count-down 15
           set next-empty-id (total-empty + AGV-id + 1)
           ( ifelse
             item 2 agvcode = "up"
@@ -509,6 +563,21 @@ to selected-pods [assignment-result]
         set y ycor]
       set m m + 1]
     [stop]]
+end
+
+;------------------------------------------------------------ ASSIGNMENT ---------------------------------------------------------------------;
+
+to assign-order-to-pod
+  let time_ time
+  if time_ = 1 [ set time_ random-exponential -10]
+  py:set "time" time_
+  (py:run
+    "import assignmentOP"
+    "result = assignmentOP.assignOP(time)")
+  set pod-list py:runresult "result"
+  set pod-list remove-duplicates pod-list
+
+  selected-pods pod-list
 end
 
 to pair-pick-pod [id]
@@ -563,8 +632,8 @@ to assigning [num]
   [let pod-to-assign 0
     let available-AGV 0
     ( ifelse
-      num = -1 and length pod-list  > AGV-number [set pod-to-assign AGV-number * 2 set available-AGV AGV-number]
-      num = -1 and length pod-list  <= AGV-number [set pod-to-assign length pod-list  set available-AGV AGV-number]
+      num = -1 and length pod-list  > AGV-number * 2 [set pod-to-assign AGV-number * 2 set available-AGV AGV-number]
+      num = -1 and length pod-list  <= AGV-number * 2 [set pod-to-assign length pod-list  set available-AGV AGV-number]
       num != -1 and length pod-list  > 1 [set pod-to-assign 2 set available-AGV 1]
       num != -1 and length pod-list  <= 1 [set pod-to-assign 1 set available-AGV 1])
 
@@ -572,13 +641,11 @@ to assigning [num]
     ifelse pod-to-assign != 1
     [ py:set "robotnode" available-AGV
       py:set "podnode" pod-to-assign
-      print available-AGV
-      print pod-to-assign
       (py:run
         "import assignmentRP"
         "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
       let result py:runresult "result"
-      print(result)
+;      print(result)
       set assignment table:from-list result
 
       ;selecting
@@ -605,15 +672,21 @@ to assigning [num]
 end
 
 to assigning-empty
+  let y-bound 38
+  let max-pod-to-assign 0
   let available-AGV 0
   ask AGVs with [availability = 0][set available-AGV available-AGV + 1]
+  while [max-pod-to-assign < (available-AGV * 2)]
+  [ set y-bound (y-bound - pod-size + 1)
+    set max-pod-to-assign 0
+    ask emptys with [ycor > y-bound and status != 1][set max-pod-to-assign max-pod-to-assign + 1]]
   py:set "robotnode" available-AGV
-  py:set "podnode" total-empty
+  py:set "podnode" max-pod-to-assign
   (py:run
     "import assignmentRP"
     "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
   let result py:runresult "result"
-  print(result)
+;  print(result)
   let assignment table:from-list result
 
   ;selecting
@@ -630,10 +703,15 @@ to pair-empty-loc [id]
   let looping-agv 0
   let looping-pod 0
   let xjob 0 let yjob 0
-  let max-pod-to-assign total-empty
+  let y-bound 38
+  let max-pod-to-assign 0
   let available-AGV 0
   ask AGVs with [availability = 0] [set available-AGV available-AGV + 1]
-  ask emptys with [status != 1] [set xjob xcor set yjob ycor let n empty-id
+  while [max-pod-to-assign < (available-AGV * 2)]
+  [ set y-bound (y-bound - pod-size + 1)
+    set max-pod-to-assign 0
+    ask emptys with [ycor > y-bound and status != 1][set max-pod-to-assign max-pod-to-assign + 1]]
+  ask emptys with [ycor > y-bound and status != 1] [set xjob xcor set yjob ycor let n empty-id
     ask AGVs with [AGV-id = id]
     [ set destination n
       starting-intersection-return id destination
@@ -784,6 +862,14 @@ to change-yend [a]
     a = 0 and yend = 32 [set yend 38])
 end
 
+;------------------------------------------------------------ TRAFFIC ---------------------------------------------------------------------;
+
+to detect-traffic
+  ask patches with [meaning = "intersection"]
+  [ let num-AGV count AGVs in-radius 2
+    ifelse num-AGV > 1 [set pcolor red][set pcolor 9]]
+end
+
 ;------------------------------------------------------------ MOVE ---------------------------------------------------------------------;
 to pick-pod [b]
   let xjob 0 let yjob 0
@@ -794,7 +880,7 @@ to pick-pod [b]
       path-status = "go-to-aisle" [go-to-aisle yjob]
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [bring-pod-out ask pods with [pod-id = n and shape != "empty space"][switch-empty xcor ycor b]])]
+      path-status = "arrive" [bring-pod-out ask pods with [pod-id = n and shape != "empty space"][switch-empty xjob yjob b]])]
 end
 
 to go-to-aisle [yjob]
@@ -913,18 +999,58 @@ end
 
 to not-collide
   let AGV-ahead one-of AGVs-on patch-ahead 1
-  if AGV-ahead = nobody  [fd 1]
+  let my-heading heading
+  let my-status path-status
+  let deadlock 0 let under-pod 0
+  ifelse AGV-ahead = nobody  [fd 1]
+  [ ask AGV-ahead [if collision? my-heading heading my-status path-status
+    [set deadlock 1]]]
+  if deadlock = 1
+  [ ask patch-here [if meaning = "podspace" or meaning = "empty-space" [set under-pod 1]]
+    ifelse path-status = "reaching-destination" and under-pod != 1
+    [set path-status "avoid-collision" set collision 1]
+    [ask AGV-ahead [ print AGV-ahead ask patch-here [if meaning = "podspace" or meaning = "empty-space" [set under-pod 0]] if path-status = "reaching-destination" and under-pod != 0 [set path-status "avoid-collision" set collision 1]]]]
 end
 
-to bring-back [b]
+to avoid-collision [id]
   let xjob 0 let yjob 0
-  ask AGVs with [who = b]
+  ask AGVs with [who = id]
+  [ let n destination
+    ask pods with [pod-id = n] [set xjob xcor set yjob ycor]
+    ( ifelse
+      collision = 1
+      [(ifelse
+        xcor mod 2 = 1 and heading = 270 [move-to patch-ahead 0 rt 90 not-collide] ;road up
+        xcor mod 2 = 1 and heading = 90 [move-to patch-ahead 0 lt 90 not-collide]
+        xcor mod 2 = 0 and heading = 270 [move-to patch-ahead 0 lt 90 not-collide] ;road down
+        xcor mod 2 = 0 and heading = 90 [move-to patch-ahead 0 rt 90 not-collide])
+        set collision 2 print who]
+      collision = 2
+      [(ifelse
+        yjob < ycor and heading = 180 [move-to patch-ahead 0 rt 90 not-collide]
+        yjob < ycor and heading = 0 [move-to patch-ahead 0 lt 90 not-collide]
+        yjob > ycor and heading = 0 [move-to patch-ahead 0 rt 90 not-collide]
+        yjob > ycor and heading = 180 [move-to patch-ahead 0 lt 90 not-collide])
+        set collision 3]
+      collision = 3
+      [(ifelse
+        xjob = xcor and yjob < yjob and heading = 90 [move-to patch-ahead 0 rt 90 not-collide]
+        xjob = xcor and yjob < yjob and heading = 270 [move-to patch-ahead 0 lt 90 not-collide]
+        xjob = xcor and yjob > yjob and heading = 90 [move-to patch-ahead 0 lt 90 not-collide]
+        xjob = xcor and yjob > yjob and heading = 270 [move-to patch-ahead 0 rt 90 not-collide]
+        xjob != xcor [not-collide]
+        xjob = xcor and yjob = ycor [set path-status "arrive" set collision 0])])]
+end
+
+to bring-back [id]
+  let xjob 0 let yjob 0
+  ask AGVs with [who = id]
   [ let n destination
     ask emptys with [empty-id = n] [set xjob xcor set yjob ycor]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xcor ycor b] set status "pick-pod" pair-next AGV-id assigning AGV-id])]
+      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] set status "pick-pod" pair-next AGV-id assigning AGV-id])]
 end
 
 to stay1
@@ -956,8 +1082,16 @@ to stay
 end
 
 to reset-count-down
-  set count-down 50
+  set count-down 15
   set label ""
+end
+
+to-report collision? [my-heading other-heading my-status other-status]
+  if my-heading = abs(other-heading - 180) and my-status = "arrive" and other-status = "reaching-destination" [report true]
+  if my-heading = abs(other-heading - 180) and my-status = "go-to-aisle" and other-status = "reaching-destination" [report true]
+  if my-heading = abs(other-heading - 180) and my-status = "reaching-destination" and other-status = "arrive" [report true]
+  if my-heading = abs(other-heading - 180) and my-status = "reaching-destination" and other-status = "go-to-aisle" [report true]
+  report false
 end
 
 to-report in-one-block? [id jobloc]
@@ -1116,7 +1250,7 @@ INPUTBOX
 887
 95
 Layout-file
-layout set 1.csv
+layout set 2.csv
 1
 0
 String
@@ -1133,15 +1267,15 @@ AGV set 1.csv
 String
 
 SLIDER
-899
-102
-1021
-135
+726
+440
+848
+473
 AGV-number
 AGV-number
 0
 50
-5.0
+15.0
 1
 1
 NIL
@@ -1176,10 +1310,10 @@ order set 1.csv
 String
 
 OUTPUT
-1090
-18
-1487
-613
+912
+32
+1309
+424
 11
 
 INPUTBOX
@@ -1199,10 +1333,10 @@ INPUTBOX
 887
 360
 type-of-item
-100
+50.0
 1
 0
-String
+Number
 
 INPUTBOX
 727
@@ -1232,20 +1366,41 @@ NIL
 NIL
 1
 
-SLIDER
-899
-146
-1024
-179
-task
-task
-0
-50
-14.0
-1
-1
-NIL
-HORIZONTAL
+PLOT
+726
+497
+926
+647
+Throughput Rate
+Hours
+Items
+0.0
+50.0
+0.0
+500.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "if time mod 100 = 0 [plot finish-order]"
+
+PLOT
+953
+497
+1153
+647
+Cycle time
+Hours
+Avg Cycle Time
+0.0
+50.0
+0.0
+500.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "if time mod 100 = 0 [plot cycle-time]"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1485,6 +1640,12 @@ fulll square 1
 false
 0
 Rectangle -7500403 true true 8 8 294 292
+
+highway
+true
+0
+Rectangle -7500403 true true 0 0 300 300
+Polygon -14835848 true false 0 225 150 75 300 225 150 90
 
 house
 false
@@ -1804,7 +1965,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.1
+NetLogo 6.1.0-RC2
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
