@@ -77,10 +77,11 @@ to setup
   py:setup py:python
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
-  generate-order 30
+  generate-order 50
   assign-order-to-pod
   place-agv ; OK
   assigning -1
+  time-count
   reset-ticks
   tick
 end
@@ -115,6 +116,8 @@ to delete-file
   carefully [file-delete "robot cycle time.csv"][]
   carefully [file-delete "throughput rate.csv"][]
   carefully [file-delete "order cycle time.csv"][]
+
+
   file-open "Assigned_order_to_pod.csv" file-type "" file-close
 end
 
@@ -421,7 +424,7 @@ to virtual-replenish [id]
 end
 
 to next-incoming-order
-  let n round(random-exponential 20)
+  let n round(random-exponential 25)
   set next-order-time time + n
 end
 
@@ -607,6 +610,25 @@ to assign-order-to-pod
 
   selected-pods pod-list
 end
+
+;to check-priority-order [id]
+;  py:set "time" time
+;  py:set "podlist" pod-list
+;  (py:run
+;    "import checkPO"
+;    "result = checkPO.CheckPriorityOrder(time,podlist)")
+;  let result py:runresult "result"
+;  print result
+;  ifelse result = 999
+;  [pair-next id assigning id]
+;  [ ask AGVs with [AGV-id = id] [ let a AGV-id let b 0 set availability 1
+;    ask pods with [pod-id = result] [set status 1 set b pod-id] set destination b
+;    starting-intersection AGV-id destination
+;    ending-intersection AGV-id destination
+;    set carrying-pod-id destination
+;    set start-time time
+;    set pod-list remove b pod-list]]
+;end
 
 to pair-pick-pod [id]
   ;for assignment
@@ -1051,7 +1073,7 @@ to bring-back [id]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] count-robot-cycle-time set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
+      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] count-robot-cycle-time set status "pick-pod" pair-next id assigning id block-road xstart AGV-id])]
 end
 
 to block-road [xc id]
@@ -1403,7 +1425,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
+"default" 1.0 0 -16777216 true "" "if time = 2 [plot 0] if time mod 3600 = 0 [plot finish-order]"
 
 PLOT
 953
@@ -1421,7 +1443,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "carefully[plot-order-ct][]"
+"default" 1.0 0 -16777216 true "" "plot-order-ct"
 
 MONITOR
 1388

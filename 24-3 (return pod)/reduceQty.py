@@ -13,7 +13,7 @@ def reduceQtyInPod(podid,time):
         if data_pod.pod_id[i] == podid:
             item.append([data_pod.item[i],data_pod.qty[i],data_pod.due_date[i],data_pod.max_qty[i]])
     for i in range (len(selected_pod)):
-    	if selected_pod.id[i] == podid:
+    	if selected_pod.id[i] == podid and selected_pod.finish_time[i] <= 0:
     		selected_pod.finish_time[i] = time
     np.savetxt(assigned_path,selected_pod, delimiter = ',')
 
