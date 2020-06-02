@@ -15,7 +15,7 @@ globals
   time
   next-order-time
   finish-order
-  cycle-time
+  o-cycle-time
   order-count
   stopping
   Stop-Que
@@ -66,6 +66,8 @@ AGVs-own
   next-empty-id
   previous-x
   previous-y
+  start-time
+  r-cycle-time
 ]
 
 to setup
@@ -84,6 +86,7 @@ to setup
 end
 
 to go
+  if time = 86400 [stop]
   ;robot movement
   ask AGVs with [shape = "kiva"]
     [let who-id who st (ifelse
@@ -96,7 +99,6 @@ to go
   checking
   detect-traffic
   ;count output
-  if time mod 3600 = 3599 [finished-order count-cycle-time 3599]
   ;order & replenishment
   if time = next-order-time + 2 [generate-order 5 update-order assign-order-to-pod update-order next-incoming-order]
   check-pod
@@ -109,8 +111,11 @@ to delete-file
   carefully [file-delete "orders.csv"][]
   carefully [file-delete "item in pod.csv"][]
   carefully [file-delete "Assigned_order_to_pod.csv"][]
-  carefully [file-delete "avg cycle time.csv"][]
+  carefully [file-delete "robot cycle time.csv"][]
   carefully [file-delete "throughput rate.csv"][]
+  carefully [file-delete "order cycle time.csv"][]
+
+
   file-open "Assigned_order_to_pod.csv" file-type "" file-close
 end
 
@@ -121,6 +126,7 @@ to set-layout
   set total-pod 0
   set total-empty 0
   set pod-size 5
+  set o-cycle-time []
   ask patches [set pcolor 9]
   ask patches
   [
@@ -478,15 +484,30 @@ to finished-order
   file-close
 end
 
-to count-cycle-time [cycle]
+to count-order-cycle-time [podid]
   py:set "time" time
-  py:set "cycle" cycle
+  py:set "podid" podid
   (py:run
     "import countingThroughput"
-    "avg_cycle_time = countingThroughput.countThroughput(time,cycle)")
-  set cycle-time py:runresult "avg_cycle_time"
-  file-open "avg cycle time.csv"
-  file-type cycle-time file-type "\n"
+    "order_cycle_time = countingThroughput.countThroughput(time,podid)")
+  let result py:runresult "order_cycle_time"
+  set o-cycle-time insert-item length o-cycle-time o-cycle-time result
+end
+
+to plot-order-ct
+  if length o-cycle-time != 0
+  [ file-open "order cycle time.csv"
+    foreach o-cycle-time
+    [ x -> let m item 0 x  plot m file-type m file-type "\n"]
+    file-close
+    set o-cycle-time []
+  ]
+end
+
+to count-robot-cycle-time
+  set r-cycle-time time - start-time
+  file-open "robot cycle time.csv"
+  file-type r-cycle-time file-type "\n"
   file-close
 end
 
@@ -554,6 +575,7 @@ to reduce-qty [pod_id]
   let pod_item_now py:runresult "item"
   let rep py:runresult "rep"
   ask pods with [pod-id = pod_id][set items pod_item_now set replenish rep]
+  count-order-cycle-time pod_id
 end
 
 to selected-pods [assignment-result]
@@ -662,18 +684,21 @@ to assigning [num]
         starting-intersection AGV-id destination
         ending-intersection AGV-id destination
         set carrying-pod-id destination
+        set start-time time
         set pod-list remove b pod-list]]
       [ ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1
         ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
         starting-intersection AGV-id destination
         ending-intersection AGV-id destination
         set carrying-pod-id destination
+        set start-time time
         set pod-list remove b pod-list]]]
     [ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1
       ask pods with [pod-id = item 0 pod-list] [set status 1 set b pod-id] set destination b
       starting-intersection AGV-id destination
       ending-intersection AGV-id destination
       set carrying-pod-id destination
+      set start-time time
       set pod-list remove b pod-list]]
     carefully [file-delete "for pairing.csv"][]]
 end
@@ -1027,7 +1052,7 @@ to bring-back [id]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
+      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] count-robot-cycle-time set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
 end
 
 to block-road [xc id]
@@ -1386,9 +1411,9 @@ PLOT
 497
 1153
 647
-Cycle time
-Hours
-Avg Cycle Time
+Order Cycle time
+Order
+Time
 0.0
 50.0
 0.0
@@ -1397,13 +1422,13 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot cycle-time]"
+"default" 1.0 0 -16777216 true "" "plot-order-ct"
 
 MONITOR
-1176
-499
-1278
-544
+1388
+498
+1490
+543
 Stop & Go
 stopping
 17
@@ -1411,15 +1436,33 @@ stopping
 11
 
 MONITOR
-1177
-553
-1278
-598
+1389
+552
+1490
+597
 Stopping in Que
 Stop-Que
 17
 1
 11
+
+PLOT
+1169
+497
+1369
+647
+Robot Cycle Time
+Task
+Time
+0.0
+50.0
+0.0
+500.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time set r-cycle-time 0]"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1984,7 +2027,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
