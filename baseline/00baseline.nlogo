@@ -90,7 +90,7 @@ end
 to go
   if not any? turtles [stop]
   ;robot movement
-  ask AGVs with [shape = "kiva"]
+  ask AGVs with [shape = "kiva" or shape = "transparent"]
     [let who-id who st (ifelse
       status = "pick-pod" [pick-pod who-id 0]
       status = "bring-to-picking" [bring-to-picking who-id]
@@ -107,7 +107,7 @@ to go
   check-pod
 
   ;replication (number starts from 0)
-  ifelse replication <= 9 [if time = 10800 [store-result record-stop-and-go record-replication setup ]][ask turtles [die] carefully [file-delete "replication.csv"][]]
+  ifelse replication <= 29 [if time = 10800 [store-result record-stop-and-go record-replication setup ]][ask turtles [die] carefully [file-delete "replication.csv"][]]
 
   time-count
   tick
@@ -142,7 +142,7 @@ to set-layout
   ask patches [set pcolor 9]
   ask patches
   [
-    let listcode item ((pycor - 45) * -1) csvmap
+    let listcode item ((pycor - max-pycor) * -1) csvmap
     let itemcode item (pxcor) listcode
     ( ifelse
       itemcode = "pod"
@@ -1063,7 +1063,7 @@ to not-collide
   let id AGV-id let AGV-ahead-who 0
   carefully[ask AGV-ahead [if AGV-id = id [set n 1] if hidden? [set m 1] if heading = heading-ahead [set heading-ahead "deadlock"] set AGV-ahead-who who]][]
   (ifelse
-    AGV-ahead = nobody or m = 1 [set previous-x xcor set previous-y ycor fd 1]
+    AGV-ahead = nobody or m = 1 [set previous-x xcor set previous-y ycor ifelse heading = 180 and ycor - 1 <= 8 [set shape "transparent"] [set shape "kiva" set color 9 set size 0.9] fd 1]
     n = 1 [fd 1 ask AGV-ahead [die]]
     heading-ahead = "deadlock" and n != 1 [resolve who resolve AGV-ahead-who])
   if AGV-ahead != nobody or n = 1 [
@@ -1434,29 +1434,11 @@ false
 PENS
 "default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
 
-PLOT
-953
-497
-1153
-647
-Order Cycle time
-Order
-Time
-0.0
-50.0
-0.0
-500.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "carefully[plot-order-ct][]"
-
 MONITOR
-1388
-498
-1490
-543
+1150
+501
+1252
+546
 Stop & Go
 stopping
 17
@@ -1464,10 +1446,10 @@ stopping
 11
 
 MONITOR
-1389
-552
-1490
-597
+1151
+555
+1252
+600
 Stopping in Que
 Stop-Que
 17
@@ -1475,10 +1457,10 @@ Stop-Que
 11
 
 PLOT
-1169
-497
-1369
-647
+938
+498
+1138
+648
 Robot Cycle Time
 Task
 Time
@@ -1982,6 +1964,10 @@ Polygon -1 true false 0 157 45 181 79 194 45 166 0 151
 Polygon -1 true false 179 42 105 12 60 0 120 30 180 45 254 77 299 93 254 63
 Polygon -1 true false 99 91 50 71 0 57 51 81 165 135
 Polygon -1 true false 194 224 258 254 295 261 211 221 144 199
+
+transparent
+true
+0
 
 tree
 false

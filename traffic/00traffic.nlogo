@@ -142,7 +142,7 @@ to set-layout
   ask patches [set pcolor 9]
   ask patches
   [
-    let listcode item ((pycor - 45) * -1) csvmap
+    let listcode item ((pycor - max-pycor) * -1) csvmap
     let itemcode item (pxcor) listcode
     ( ifelse
       itemcode = "pod"
