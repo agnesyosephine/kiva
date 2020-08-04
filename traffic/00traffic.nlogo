@@ -68,6 +68,8 @@ AGVs-own
   previous-x
   previous-y
   start-time
+  q-time
+  que-time
   r-cycle-time
 ]
 
@@ -90,7 +92,7 @@ end
 to go
   if not any? turtles [stop]
   ;robot movement
-  ask AGVs with [shape = "kiva"]
+  ask AGVs with [shape = "kiva" or shape = "trans"]
     [let who-id who st (ifelse
       status = "pick-pod" [pick-pod who-id 0]
       status = "bring-to-picking" [bring-to-picking who-id]
@@ -107,7 +109,7 @@ to go
   check-pod
 
   ;replication (number starts from 0)
-  ifelse replication <= 9 [if time = 10800 [store-result record-stop-and-go record-replication setup]][ask turtles [die] carefully [file-delete "replication.csv"][]]
+  ifelse replication <= 29 [if time = 10800 [store-result record-stop-and-go record-replication setup]][ask turtles [die] carefully [file-delete "replication.csv"][]]
 
   time-count
   tick
@@ -537,6 +539,7 @@ end
 
 to store-result
   export-plot "Robot Cycle Time" (word "/result/robot cycle time" replication ".csv")
+  export-plot "Robot traveling Time" (word "/result/robot traveling time" replication ".csv")
 end
 
 ;------------------------------------------------------------ SWITCH POD & EMPTY ---------------------------------------------------------------------;
@@ -1028,7 +1031,9 @@ to bring-to-picking [n]
   let m 0
   ask patch-here [if meaning = "intersection" [set m 1]]
   ask AGV n
-  [ ifelse m = 1
+  [ if ycor >= 38 and ycor < 43 and q-time = 0 and any? AGVs-on patch-ahead 1 [set q-time time]
+    if ycor = 43 and q-time = 0 [set q-time time]
+    ifelse m = 1
     [ (ifelse
       heading = 90 and ycor = 38 and xcor = 7 [move-to patch-ahead 0 lt 90 not-collide]
       heading = 90 and ycor = 38 and xcor = 13 [move-to patch-ahead 0 lt 90 not-collide]
@@ -1083,7 +1088,7 @@ to not-collide
       ask AGVs in-radius 1 with [heading = 270 or heading = 90] [ if towards-traffic? xdirection ydirection xc yc and previously-moving? AGV-id [set vertical vertical + 1]]
   ]]
   (ifelse
-    free-to-move? AGV-ahead traffic_ m horizontal vertical [set previous-x xcor set previous-y ycor fd 1]
+    free-to-move? AGV-ahead traffic_ m horizontal vertical [set previous-x xcor set previous-y ycor fd 1 ifelse ycor <= 7 or xcor = 0 or xcor = 35 [set shape "trans"][set shape "kiva"]]
     n = 1 [fd 1 ask AGV-ahead [die]]
     heading-ahead = "deadlock" and n != 1 [resolve who resolve AGV-ahead-who])
 
@@ -1180,6 +1185,7 @@ to stay
       set label ""
       reset-count-down
       reduce-qty carrying-pod-id
+      set que-time time - q-time
       set status "bring-back"
       if path-status != "on-the-way"
       [ ask AGVs with [availability = 0]
@@ -1490,24 +1496,6 @@ false
 PENS
 "default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
 
-PLOT
-953
-497
-1153
-647
-Order Cycle time
-Order
-Time
-0.0
-50.0
-0.0
-500.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "carefully[plot-order-ct][]"
-
 MONITOR
 1388
 498
@@ -1531,9 +1519,9 @@ Stop-Que
 11
 
 PLOT
-1169
+937
 497
-1369
+1137
 647
 Robot Cycle Time
 Task
@@ -1541,12 +1529,30 @@ Time
 0.0
 50.0
 0.0
-500.0
+150.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time set r-cycle-time 0]"
+"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time]"
+
+PLOT
+1148
+497
+1348
+647
+Robot Traveling Time
+Task
+Time
+0.0
+50.0
+0.0
+150.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time - que-time set que-time 0 set q-time 0  set r-cycle-time 0]"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -2038,6 +2044,10 @@ Polygon -1 true false 0 157 45 181 79 194 45 166 0 151
 Polygon -1 true false 179 42 105 12 60 0 120 30 180 45 254 77 299 93 254 63
 Polygon -1 true false 99 91 50 71 0 57 51 81 165 135
 Polygon -1 true false 194 224 258 254 295 261 211 221 144 199
+
+trans
+true
+0
 
 tree
 false

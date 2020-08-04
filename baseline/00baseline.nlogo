@@ -68,6 +68,8 @@ AGVs-own
   previous-x
   previous-y
   start-time
+  q-time
+  que-time
   r-cycle-time
 ]
 
@@ -537,6 +539,7 @@ end
 
 to store-result
   export-plot "Robot Cycle Time" (word "/result/robot cycle time" replication ".csv")
+  export-plot "Robot traveling Time" (word "/result/robot traveling time" replication ".csv")
 end
 
 ;------------------------------------------------------------ SWITCH POD & EMPTY ---------------------------------------------------------------------;
@@ -1016,7 +1019,9 @@ to bring-to-picking [n]
   let m 0
   ask patch-here [if meaning = "intersection" [set m 1]]
   ask AGV n
-  [ ifelse m = 1
+  [ if ycor >= 38 and ycor < 43 and q-time = 0 and any? AGVs-on patch-ahead 1 [set q-time time]
+    if ycor = 43 and q-time = 0 [set q-time time]
+    ifelse m = 1
     [ (ifelse
       heading = 90 and ycor = 38 and xcor = 7 [move-to patch-ahead 0 lt 90 not-collide]
       heading = 90 and ycor = 38 and xcor = 13 [move-to patch-ahead 0 lt 90 not-collide]
@@ -1124,6 +1129,7 @@ to stay
       set label ""
       reset-count-down
       reduce-qty carrying-pod-id
+      set que-time time - q-time
       set status "bring-back"
       if path-status != "on-the-way"
       [ ask AGVs with [availability = 0]
@@ -1435,10 +1441,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
 
 MONITOR
-1150
-501
-1252
-546
+1375
+511
+1477
+556
 Stop & Go
 stopping
 17
@@ -1446,10 +1452,10 @@ stopping
 11
 
 MONITOR
-1151
-555
-1252
-600
+1376
+565
+1477
+610
 Stopping in Que
 Stop-Que
 17
@@ -1467,12 +1473,30 @@ Time
 0.0
 50.0
 0.0
-500.0
+150.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time set r-cycle-time 0]"
+"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time]"
+
+PLOT
+1150
+499
+1350
+649
+Robot Traveling Time
+Task
+Time
+0.0
+50.0
+0.0
+100.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time - que-time set que-time 0 set q-time 0  set r-cycle-time 0]"
 
 @#$#@#$#@
 ## WHAT IS IT?
