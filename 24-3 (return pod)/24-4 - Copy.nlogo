@@ -572,8 +572,6 @@ to assigning [num]
     ifelse pod-to-assign != 1
     [ py:set "robotnode" available-AGV
       py:set "podnode" pod-to-assign
-      print
-      print robotnode
       (py:run
         "import assignmentRP"
         "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
