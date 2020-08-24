@@ -580,7 +580,10 @@ to switch-pod [xc yc id]
   let transfer-pod-id 0
   let transfer-empty-id empty-id
   let items_ 0 let status_ 0 let replenish_ 0
-  ask AGVs with [who = id] [set transfer-pod-id carrying-pod-id set next-empty-id transfer-empty-id]
+  ask AGVs with [who = id] [
+    set transfer-pod-id carrying-pod-id
+    set next-empty-id transfer-empty-id
+  ]
   ask pods with [pod-id = transfer-pod-id] [set pod-id -1 set items_ items set status_ status set replenish_ replenish]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout-pods 1
@@ -651,8 +654,13 @@ to pair-pick-pod [id]
   [ set looping-pod 0 ;one AGV with each pod
     ifelse looping-agv < AGV-number
     [ loop ;for every pod
-      [ ifelse looping-pod < max-pod-to-assign
-        [ ask pods with [pod-id = item looping-pod pod-list] [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
+      [ ifelse looping-pod < max-pod-to-assign[
+        ask pods with [pod-id = item looping-pod pod-list] [
+          set xjob xcor
+          set yjob ycor
+          let n pod-id
+          ask AGVs with [AGV-id = id] [set destination n]
+        ]
           starting-intersection id destination
           ending-intersection id destination
           file-open "for pairing.csv"
@@ -2065,7 +2073,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
