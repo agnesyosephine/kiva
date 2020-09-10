@@ -11,16 +11,7 @@ globals
   total-pod
   total-empty
   pod-size
-  pod-list
   time
-  next-order-time
-  finish-order
-  o-cycle-time
-  order-count
-  stopping
-  Stop-Que
-  replication
-  item-now ;just for placing item
 ]
 
 emptys-own
@@ -41,7 +32,6 @@ pods-own
   pod-id
   status
   replenish
-  rep-lead-time
 ]
 
 patches-own
@@ -53,6 +43,7 @@ patches-own
 AGVs-own
 [
   count-down
+  count-down2
   status
   path-status
   AGV-id
@@ -66,23 +57,17 @@ AGVs-own
   availability
   carrying-pod-id
   next-empty-id
-  previous-x
-  previous-y
-  start-time
-  q-time
-  que-time
-  r-cycle-time
 ]
 
 to setup
   ca
-  replication-read
   delete-file
   set-layout ; OK
   py:setup py:python
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
-  generate-order 30
+  generate-order 50
+  duplicate-data-item-for-assignment
   assign-order-to-pod
   place-agv ; OK
   assigning -1
@@ -91,28 +76,16 @@ to setup
 end
 
 to go
-  if not any? turtles [stop]
-  ;robot movement
-  ask AGVs with [shape = "kiva" or shape = "transparent"]
-    [let who-id who st (ifelse
-      status = "pick-pod" [pick-pod who-id 0]
-      status = "bring-to-picking" [bring-to-picking who-id]
-      status = "queuing" [queuing who-id]
-      status = "bring-back" [bring-back who-id]
-      status = "stop" [stop])]
-  ask pods with [replenish = 1][lead-time-count-down]
-  checking
-  detect-traffic
-  ;count output
-  if time mod 3600 = 3599 [finished-order 3600]
-  ;order & replenishment
-  if time = next-order-time + 2 [generate-order 5 update-order assign-order-to-pod update-order next-incoming-order]
-  check-pod
-
-  ;replication (number starts from 0)
-  ifelse replication <= 29 [if time = 10800 [store-result record-stop-and-go record-replication setup ]][ask turtles [die] carefully [file-delete "replication.csv"][]]
-
+  ask AGVs [let n who (ifelse
+    status = "pick-pod" [pick-pod n]
+    status = "bring-to-picking" [bring-to-picking n]
+    status = "queuing" [queuing n]
+    status = "bring-back" [bring-back n]
+    status = "stop" [stop])
+    pen-down]
   time-count
+  virtual-replenish
+;  if time mod 100 = 0 and time <= 1000 [generate-order 5 update-order assign-order-to-pod]
   tick
 end
 ;------------------------------------------------------------ SETUP ---------------------------------------------------------------------;
@@ -120,333 +93,27 @@ to delete-file
   carefully [file-delete "for pairing.csv"][]
   carefully [file-delete "orders.csv"][]
   carefully [file-delete "item in pod.csv"][]
-  carefully [file-delete "Assigned_order_to_pod.csv"][]
-  if replication = 0
-  [ carefully [file-delete "robot cycle time.csv"][]
-    carefully [file-delete "throughput rate.csv"][]
-    carefully [file-delete "order cycle time.csv"][]
-    carefully [file-delete "stop and go.csv"][]
-    carefully [file-delete "replication.csv"][] ]
-  file-open "Assigned_order_to_pod.csv" file-type "" file-close
+  carefully [file-delete "temporary item in pod.csv"][]
 end
 
-to replication-read
-  carefully[let rep_ item 0 csv:from-file "Replication.csv" set replication item 0 rep_][set replication 0]
+to virtual-replenish
+  let all-sku 0
+  ask pods with [replenish = 1]
+  [loop
+    [ ifelse all-sku < sku-per-pod
+      [ let array_ item all-sku items
+        let rep-qty item 3 array_
+        set array_ replace-item 1 array_ rep-qty
+        set items replace-item all-sku items array_
+        set all-sku all-sku + 1]
+      [ set replenish 0
+        stop]]]
 end
 
-to set-layout
-  set time time + 1
-  let csvmap csv:from-file (word "layout/" layout-file)
-  let n 0
-  set total-pod 0
-  set total-empty 0
-  set pod-size 5
-  set o-cycle-time []
-  let sku-shuffle shuffle range type-of-item
-  ask patches [set pcolor 9]
-  ask patches
-  [
-    let listcode item ((pycor - max-pycor) * -1) csvmap
-    let itemcode item (pxcor) listcode
-    ( ifelse
-      itemcode = "pod"
-      [ sprout-pods 1
-        [ set shape "full square"
-          set color sky
-          set pod-id total-pod
-          place-item pod-id sku-shuffle
-          set rep-lead-time 100]
-        set meaning "podspace"
-        set total-pod total-pod + 1
-      ]
-      itemcode = "empty"
-      [ sprout-emptys 1
-        [ set shape "empty space"
-          set color 9
-          set empty-id total-empty]
-        set meaning "empty-space"
-        set total-empty total-empty + 1]
-      itemcode = "pic"
-      [ sprout-pick-stations 1
-        [ set shape "person"
-          set color black ]
-        set meaning "picking-opens"
-        set pcolor 9 ]
-      itemcode = "rep"
-      [ sprout 1
-        [ set shape "person"
-          set color blue
-          stamp
-          die ]
-        set meaning "picking-opens"
-        set pcolor 9 ]
-      itemcode = "UR" or itemcode = "UL" or itemcode = "DR" or itemcode = "DL"
-      [ set pcolor 9
-        set meaning "intersection"
-        set intersection-id n
-        set n n + 1
-      ]
-      itemcode = "URC" or itemcode = "ULC" or itemcode = "DRC" or itemcode = "DLC"
-      [ set pcolor 9
-        set meaning "intersection"
-        set intersection-id n
-        set n n + 1
-      ]
-      itemcode = "U"
-      [ set pcolor 9
-        sprout 1
-        [ set shape "direction"
-          set color 9
-          set heading 0
-          stamp die ]
-        set meaning "road-up" ]
-      itemcode = "D"
-      [ set pcolor 9
-        sprout 1
-        [ set shape "direction"
-          set color 9
-          set heading 180
-          stamp die ]
-        set meaning "road-down" ]
-      itemcode = "L"
-      [ set pcolor 9
-        sprout 1
-        [ ifelse pycor = 7 or pycor = 8 or pycor = 38 or pycor = 39 [set shape "highway"] [set shape "direction"]
-          set color 9
-          set heading 270
-          stamp die ]
-        set meaning "road-left" ]
-      itemcode = "R"
-      [ set pcolor 9
-        sprout 1
-        [ ifelse pycor = 7 or pycor = 8 or pycor = 38 or pycor = 39 [set shape "highway"] [set shape "direction"]
-          set color 9
-          set heading 90
-          stamp die ]
-        set meaning "road-right" ]
-      itemcode = "q" or itemcode = "qi"
-      [ sprout 1
-        [ set shape "stripes"
-          set color black
-          set heading 90
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qq"
-      [ sprout 1
-        [ set shape "stripes"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q1"
-      [ sprout 1
-        [ set shape "int7"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q2"
-      [ sprout 1
-        [ set shape "int5"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q3"
-      [ sprout 1
-        [ set shape "int3"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q4"
-      [ sprout 1
-        [ set shape "int1"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q5"
-      [ sprout 1
-        [ set shape "int2"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q6"
-      [ sprout 1
-        [ set shape "int6"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q7"
-      [ sprout 1
-        [ set shape "int8"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q9"
-      [ sprout 1
-        [ set shape "int7"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q10"
-      [ sprout 1
-        [ set shape "int5"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q11"
-      [ sprout 1
-        [ set shape "int1"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qi2"
-      [ sprout 1
-        [ set shape "int4"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qi3"
-      [ sprout 1
-        [ set shape "int9"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qo"
-      [ sprout 1
-        [ set shape "arrow1"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qo2"
-      [ sprout 1
-        [ set shape "arrow1"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      [ set pcolor 9 ])
-  ]
-end
-
-to place-agv
-  let agvloc csv:from-file (word "AGV/" AGV-location-file)
-  let n 0
-  loop
-  [ ifelse n < AGV-number
-    [ let agvcode item n agvloc
-      ask patches with [pxcor = item 0 agvcode and pycor = item 1 agvcode]
-      [ sprout-AGVs 1
-        [ set AGV-id n
-          set size 0.9
-          set color 9
-          set availability 1
-          set shape "kiva"
-          set status "pick-pod"
-          set count-down round(random-poisson 15)
-          set next-empty-id (total-empty + AGV-id + 1)
-          ( ifelse
-            item 2 agvcode = "up"
-            [ set heading 0 ]
-            item 2 agvcode = "down"
-            [ set heading 180 ]
-            item 2 agvcode = "right"
-            [ set heading 90 ]
-            [ set heading 270 ] )
-          pair-pick-pod AGV-id
-        ] ] ]
-    [stop]
-    set n n + 1]
-end
-
-to place-item [pod-id- sku-shuffle]
-  ask pods with [pod-id = pod-id-]
-  [ set items []
-    let n 0
-    loop
-    [ ifelse n < sku-per-pod
-      [ let sku []
-        let item-type item item-now sku-shuffle
-
-        ; generate random number 5~15 with Poisson distribution for item qty in pod
-        let qty random-poisson 10
-        while [qty < 5 or qty > 15]
-        [set qty random-poisson 10]
-
-        let due 999
-        set sku insert-item 0 sku item-type
-        set sku insert-item 1 sku qty
-        set sku insert-item 2 sku due
-        set sku insert-item 3 sku qty
-        set items insert-item n items sku
-
-        ;record in excel
-        file-open "item in pod.csv"
-        file-type pod-id- file-type "," file-type item-type file-type "," file-type qty file-type "," file-type due file-type "," file-type qty file-type "\n"
-        file-close
-
-        set n n + 1
-        ifelse item-now + 1 = length sku-shuffle [set item-now 0] [set item-now item-now + 1]
-      print item-type]
-      [stop]]]
-end
-
-;------------------------------------------------------------ ORDER & REPLENISHMENT ---------------------------------------------------------------------;
-to virtual-replenish [id]
-  py:set "pod_id" id
+to duplicate-data-item-for-assignment
   (py:run
-    "import virtualRep"
-    "item = virtualRep.VirtualReplenishment(pod_id)")
-  let pod_item_now py:runresult "item"
-  ask pods with [pod-id = pod-id] [set replenish 0 set items pod_item_now]
-end
-
-to next-incoming-order
-  let n round(random-exponential 20)
-  set next-order-time time + n
+    "import duplicatepoddata"
+    "result = duplicatepoddata.DuplicatePodData()")
 end
 
 to time-count
@@ -458,9 +125,14 @@ to generate-order [num]
   loop
   [ ifelse n < num
     [ ;random generator
-      let item-type random type-of-item
-      let qty (random-poisson 5) + 1
-      let due (random 5) + 1
+      let item-type (random 50 + 1)
+      let qty (random 4 + 1)
+      let due (random 4 + 1)
+
+      ;show output
+;      ifelse item-type < 10
+;      [output-show (word "   0" item-type "          " qty "              " due "     ")]
+;      [output-show (word "   " item-type "          " qty "              " due "     ")]
 
       ;export excel
       file-open "orders.csv"
@@ -476,113 +148,302 @@ to update-order
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
   file-open "orders.csv"
-  if not file-at-end?
-  [let result csv:from-row file-read-line
-    while [not file-at-end?]
-    [ set row csv:from-row file-read-line
+  let result csv:from-row file-read-line
+  while [not file-at-end?]
+  [ set row csv:from-row file-read-line
 
-      let item-type item 0 row
-      let qty item 1 row
-      let due item 2 row
+    let item-type item 0 row
+    let qty item 1 row
+    let due item 2 row
 
-      ;show output
-      ifelse item-type < 10
-      [output-show (word "   0" item-type "          " qty "              " due "     ")]
-      [output-show (word "   " item-type "          " qty "              " due "     ")]]]
+    ;show output
+    ifelse item-type < 10
+    [output-show (word "   0" item-type "          " qty "              " due "     ")]
+    [output-show (word "   " item-type "          " qty "              " due "     ")]]
 
-    file-close
-end
-
-;------------------------------------------------------------ OUTPUT ---------------------------------------------------------------------;
-
-to finished-order [cycle]
-  py:set "time" time
-  py:set "cycle" cycle
-  (py:run
-    "import FinishOrder"
-    "count = FinishOrder.FinishOrderCount(time,cycle)")
-  set finish-order py:runresult "count"
-  file-open "throughput rate.csv"
-  file-type finish-order file-type "\n"
   file-close
 end
 
-to count-order-cycle-time [podid]
-  py:set "time" time
-  py:set "podid" podid
+to assign-order-to-pod
   (py:run
-    "import countingThroughput"
-    "order_cycle_time = countingThroughput.countThroughput(time,podid)")
-  let result py:runresult "order_cycle_time"
-  set o-cycle-time insert-item length o-cycle-time o-cycle-time result
+    "import assignmentOP"
+    "result = assignmentOP.assignOP()")
+  let result py:runresult "result"
+
+  selected-pods result
 end
 
-to plot-order-ct
-  if length o-cycle-time != 0
-  [ file-open "order cycle time.csv"
-    foreach o-cycle-time
-    [ x -> let m item 0 x  plot m file-type m file-type "\n"]
-    file-close
-    set o-cycle-time []
+to set-layout
+  set time time + 1
+  let csvmap csv:from-file (word "layout/" layout-file)
+  let n 0
+  set total-pod 0
+  set total-empty 0
+  set pod-size 5
+  ask patches
+  [
+    let listcode item ((pycor - 45) * -1) csvmap
+    let itemcode item (pxcor) listcode
+    ( ifelse
+      itemcode = "pod"
+      [ sprout-pods 1
+        [ set shape "full square"
+          set color gray
+          set pod-id total-pod
+          place-item pod-id]
+        set meaning "podspace"
+        set total-pod total-pod + 1
+      ]
+      itemcode = "empty"
+      [ sprout-emptys 1
+        [ set shape "empty space"
+          set color gray
+          set empty-id total-empty]
+        set meaning "empty-space"
+        set total-empty total-empty + 1]
+      itemcode = "pic"
+      [ sprout-pick-stations 1
+        [ set shape "person"
+          set color black ]
+        set meaning "picking-opens"
+        set pcolor gray ]
+      itemcode = "rep"
+      [ sprout 1
+        [ set shape "person"
+          set color blue
+          stamp
+          die ]
+        set meaning "picking-opens"
+        set pcolor gray ]
+      itemcode = "UR" or itemcode = "UL" or itemcode = "DR" or itemcode = "DL"
+      [ set pcolor gray
+        set meaning "intersection"
+        set intersection-id n
+        set n n + 1
+      ]
+      itemcode = "URC" or itemcode = "ULC" or itemcode = "DRC" or itemcode = "DLC"
+      [ set pcolor gray
+        set meaning "intersection"
+        set intersection-id n
+        set n n + 1
+      ]
+      itemcode = "U"
+      [ set pcolor grey
+        sprout 1
+        [ set shape "direction"
+          set color grey
+          set heading 0
+          stamp die ]
+        set meaning "road-up" ]
+      itemcode = "D"
+      [ set pcolor grey
+        sprout 1
+        [ set shape "direction"
+          set color grey
+          set heading 180
+          stamp die ]
+        set meaning "road-down" ]
+      itemcode = "L"
+      [ set pcolor grey
+        sprout 1
+        [ set shape "direction"
+          set color grey
+          set heading 270
+          stamp die ]
+        set meaning "road-left" ]
+      itemcode = "R"
+      [ set pcolor grey
+        sprout 1
+        [ set shape "direction"
+          set color grey
+          set heading 90
+          stamp die ]
+        set meaning "road-right" ]
+      itemcode = "q" or itemcode = "qi"
+      [ sprout 1
+        [ set shape "stripes"
+          set color white
+          set heading 90
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "qq"
+      [ sprout 1
+        [ set shape "stripes"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q1"
+      [ sprout 1
+        [ set shape "int7"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q2"
+      [ sprout 1
+        [ set shape "int5"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q3"
+      [ sprout 1
+        [ set shape "int3"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q4"
+      [ sprout 1
+        [ set shape "int1"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q5"
+      [ sprout 1
+        [ set shape "int2"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q6"
+      [ sprout 1
+        [ set shape "int6"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q7"
+      [ sprout 1
+        [ set shape "int8"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q9"
+      [ sprout 1
+        [ set shape "int7"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q10"
+      [ sprout 1
+        [ set shape "int5"
+          set color white
+          set heading 180
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "q11"
+      [ sprout 1
+        [ set shape "int1"
+          set color white
+          set heading 180
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "qi2"
+      [ sprout 1
+        [ set shape "int4"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "qi3"
+      [ sprout 1
+        [ set shape "int9"
+          set color white
+          set heading 180
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "qo"
+      [ sprout 1
+        [ set shape "arrow1"
+          set color white
+          set heading 0
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      itemcode = "qo2"
+      [ sprout 1
+        [ set shape "arrow1"
+          set color white
+          set heading 180
+          stamp
+          die ]
+        set pcolor gray
+        set meaning "queue" ]
+      [ set pcolor gray ])
   ]
 end
 
-to count-robot-cycle-time
-  set r-cycle-time time - start-time
-  file-open "robot cycle time.csv"
-  file-type r-cycle-time file-type "\n"
-  file-close
-end
+to place-item [m]
+  ask pods with [pod-id = m]
+  [ set items []
+    let n 0
+    loop
+    [ ifelse n < sku-per-pod
+      [ let sku []
+        let item-type random 50 + 1
+        let qty random 15 + 1
+        let due 999
+        set sku insert-item 0 sku item-type
+        set sku insert-item 1 sku qty
+        set sku insert-item 2 sku due
+        set sku insert-item 3 sku qty
+        set items insert-item n items sku
 
-to record-stop-and-go
-  file-open "stop and go.csv"
-  file-type stopping file-type "\n"
-  file-close
-end
+        ;record in excel
+        file-open "item in pod.csv"
+        file-type m file-type "," file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
+        file-close
 
-to record-replication
-  set replication replication + 1
-  carefully [file-delete "Replication.csv"][]
-  file-open "Replication.csv" file-type replication file-close
-end
-
-to store-result
-  export-plot "Robot Cycle Time" (word "/result/robot cycle time" replication ".csv")
-  export-plot "Robot traveling Time" (word "/result/robot traveling time" replication ".csv")
-end
-
-;------------------------------------------------------------ SWITCH POD & EMPTY ---------------------------------------------------------------------;
-
-to check-pod
-  let n 0
-  ask patches with [meaning = "podspace" or meaning = "empty-space"]
-  [ let xc pxcor let yc pycor
-    if not any? turtles with [xcor = xc and ycor = yc]
-    [ sprout-emptys 1
-      [ set shape "empty space"
-        set color 9
-        set total-empty total-empty + 1
-        while [any? emptys with [empty-id = n]]
-          [ set n n + 1]
-        set empty-id n]
-      set meaning "empty-space"]]
+        set n n + 1]
+      [stop]]]
 end
 
 to switch-empty [xc yc id]
   let n 0
   ask AGVs with [who = id] [set n next-empty-id]
   ask patches with [pxcor = xc and pycor = yc]
-  [ if not any? emptys with [xcor = xc and ycor = yc]
-    [ sprout-emptys 1
-      [ set shape "empty space"
-        set color 9
-        set total-empty total-empty + 1
-        while [any? emptys with [empty-id = n]]
-          [ set n n + 1]
-        set empty-id n]
-      set meaning "empty-space"]
-    ask pods with [xcor = xc and ycor = yc]
-    [set shape "empty space" set color 9]]
+  [ sprout-emptys 1
+    [ set shape "empty space"
+      set color gray
+      set total-empty total-empty + 1
+      set empty-id n]
+    set meaning "empty-space"]
+  ask pods with [xcor = xc and ycor = yc]
+  [set shape "empty space" set color gray]
 end
 
 to switch-pod [xc yc id]
@@ -594,28 +455,44 @@ to switch-pod [xc yc id]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout-pods 1
     [ set shape "full square"
-      set color sky
+      set color gray
       set pod-id transfer-pod-id
       set items items_
       set status status_
       set replenish replenish_]
     set meaning "podspace"]
   ask pods with [pod-id = -1][die]
-  ask emptys with [xcor = xc and ycor = yc][die]
+  die
 end
 
-to reduce-qty [pod_id]
-  py:set "podid" pod_id
-  py:set "time" time
-  (py:run
-    "import reduceQty"
-    "item = reduceQty.reduceQtyInPod(podid,time)"
-    "import replenishIndicator"
-    "rep = replenishIndicator.replenishmentIndicator(podid)")
-  let pod_item_now py:runresult "item"
-  let rep py:runresult "rep"
-  ask pods with [pod-id = pod_id][set items pod_item_now set replenish rep]
-  count-order-cycle-time pod_id
+to place-agv
+  let agvloc csv:from-file (word "AGV/" AGV-location-file)
+  let n 0
+  loop
+  [ ifelse n < AGV-number
+    [ let agvcode item n agvloc
+      ask patches with [pxcor = item 0 agvcode and pycor = item 1 agvcode]
+      [ sprout-AGVs 1
+        [ set AGV-id n
+          set size 0.9
+;          set color gray
+          set availability 1
+          set shape "kiva"
+          set status "pick-pod"
+          set count-down 50
+          set next-empty-id (total-empty + AGV-id + 1)
+          ( ifelse
+            item 2 agvcode = "up"
+            [ set heading 0 ]
+            item 2 agvcode = "down"
+            [ set heading 180 ]
+            item 2 agvcode = "right"
+            [ set heading 90 ]
+            [ set heading 270 ] )
+          pair-pick-pod AGV-id
+        ] ] ]
+    [stop]
+    set n n + 1]
 end
 
 to selected-pods [assignment-result]
@@ -627,26 +504,11 @@ to selected-pods [assignment-result]
     [ ask pods with [pod-id = item m assignment-result]
       [ set shape "shelf"
         set size 1
-        set color 138
+        set color 2
         set x xcor
         set y ycor]
       set m m + 1]
     [stop]]
-end
-
-;------------------------------------------------------------ ASSIGNMENT ---------------------------------------------------------------------;
-
-to assign-order-to-pod
-  let time_ time
-  if time_ = 1 [ set time_ round (random-exponential -30)]
-  py:set "time" time_
-  (py:run
-    "import assignmentOP"
-    "result = assignmentOP.assignOP(time)")
-  set pod-list py:runresult "result"
-  set pod-list remove-duplicates pod-list
-
-  selected-pods pod-list
 end
 
 to pair-pick-pod [id]
@@ -655,13 +517,13 @@ to pair-pick-pod [id]
   let looping-pod 0
   let xjob 0 let yjob 0
   let max-pod-to-assign 0
-  ifelse length pod-list  > 2 * AGV-number [set max-pod-to-assign (2 * AGV-number)] [set max-pod-to-assign length pod-list ]
+  ifelse task > 2 * AGV-number [set max-pod-to-assign (2 * AGV-number)] [set max-pod-to-assign task]
   loop ;for every AGV
   [ set looping-pod 0 ;one AGV with each pod
     ifelse looping-agv < AGV-number
     [ loop ;for every pod
       [ ifelse looping-pod < max-pod-to-assign
-        [ ask pods with [pod-id = item looping-pod pod-list] [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
+        [ ask one-of pods with [shape = "shelf"] [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
           starting-intersection id destination
           ending-intersection id destination
           file-open "for pairing.csv"
@@ -682,11 +544,11 @@ to pair-next [id]
     let looping-pod 0
     let xjob 0 let yjob 0
     let max-pod-to-assign 0
-    ifelse length pod-list > 2 [set max-pod-to-assign 2] [set max-pod-to-assign length pod-list]
+    ifelse task > 2 [set max-pod-to-assign 2] [set max-pod-to-assign task]
     set looping-pod 0 ;one AGV with each pod
     loop ;for every pod
     [ ifelse looping-pod < max-pod-to-assign
-      [ ask pods with [pod-id = item looping-pod pod-list] [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
+      [ ask one-of pods with [shape = "shelf"] [set xjob xcor set yjob ycor let n pod-id ask AGVs with [AGV-id = id] [set destination n]]
         starting-intersection id destination
         ending-intersection id destination
         file-open "for pairing.csv"
@@ -697,72 +559,52 @@ to pair-next [id]
 end
 
 to assigning [num]
-  if not empty? pod-list;no selected pod left
+  if any? pods with [shape = "shelf"];no selected pod left
   [let pod-to-assign 0
     let available-AGV 0
     ( ifelse
-      num = -1 and length pod-list  > AGV-number * 2 [set pod-to-assign AGV-number * 2 set available-AGV AGV-number]
-      num = -1 and length pod-list  <= AGV-number * 2 [set pod-to-assign length pod-list  set available-AGV AGV-number]
-      num != -1 and length pod-list  > 1 [set pod-to-assign 2 set available-AGV 1]
-      num != -1 and length pod-list  <= 1 [set pod-to-assign 1 set available-AGV 1])
+      num = -1 and task > AGV-number [set pod-to-assign AGV-number * 2 set available-AGV AGV-number]
+      num = -1 and task <= AGV-number [set pod-to-assign task set available-AGV AGV-number]
+      num != -1 and task > 1 [set pod-to-assign 2 set available-AGV 1]
+      num != -1 and task <= 1 [set pod-to-assign task set available-AGV 1])
+    py:set "robotnode" available-AGV
+    py:set "podnode" pod-to-assign
+    (py:run
+      "import assignmentRP"
+      "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
+    let result py:runresult "result"
+    print(result)
+    let assignment table:from-list result
 
-    let assignment 0
-    ifelse pod-to-assign != 1
-    [ py:set "robotnode" available-AGV
-      py:set "podnode" pod-to-assign
-      (py:run
-        "import assignmentRP"
-        "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
-      let result py:runresult "result"
-;      print(result)
-      set assignment table:from-list result
-
-      ;selecting
-      ifelse num = -1
-      [ ask AGVs [ let a AGV-id let b 0 set availability 1
-        ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
-        starting-intersection AGV-id destination
-        ending-intersection AGV-id destination
-        set carrying-pod-id destination
-        set start-time time
-        set pod-list remove b pod-list]]
-      [ ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1
-        ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
-        starting-intersection AGV-id destination
-        ending-intersection AGV-id destination
-        set carrying-pod-id destination
-        set start-time time
-        set pod-list remove b pod-list]]]
-    [ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1
-      ask pods with [pod-id = item 0 pod-list] [set status 1 set b pod-id] set destination b
+    ;selecting
+    ifelse num = -1
+    [ ask AGVs [ let a AGV-id let b 0 set availability 1
+      ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
       starting-intersection AGV-id destination
       ending-intersection AGV-id destination
-      set carrying-pod-id destination
-      set start-time time
-      set pod-list remove b pod-list]]
+      set carrying-pod-id destination]]
+    [ ask AGVs with [AGV-id = num] [ let a AGV-id let b 0 set availability 1
+      ask pods with [pod-id = table:get assignment a] [set status 1 set b pod-id] set destination b
+      starting-intersection AGV-id destination
+      ending-intersection AGV-id destination
+      set carrying-pod-id destination]]
     carefully [file-delete "for pairing.csv"][]]
 end
 
 to assigning-empty
-  let y-bound 38
-  let max-pod-to-assign 0
   let available-AGV 0
   ask AGVs with [availability = 0][set available-AGV available-AGV + 1]
-  while [max-pod-to-assign < (available-AGV * 2)]
-  [ set y-bound (y-bound - pod-size + 1)
-    set max-pod-to-assign 0
-    ask emptys with [ycor > y-bound and status != 1][set max-pod-to-assign max-pod-to-assign + 1]]
   py:set "robotnode" available-AGV
-  py:set "podnode" max-pod-to-assign
+  py:set "podnode" total-empty
   (py:run
     "import assignmentRP"
     "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
   let result py:runresult "result"
-;  print(result)
+  print(result)
   let assignment table:from-list result
 
   ;selecting
-  ask AGVs with [availability = 0] [ let a AGV-id let b 0  set availability 1
+  ask AGVs with [availability = 0] [ let a AGV-id let b 0  set availability 1 print a
     ask emptys with [empty-id = table:get assignment a] [set status 1 set b empty-id set total-empty total-empty - 1] set destination b
     starting-intersection-return AGV-id destination
     ending-intersection-return AGV-id destination
@@ -775,15 +617,10 @@ to pair-empty-loc [id]
   let looping-agv 0
   let looping-pod 0
   let xjob 0 let yjob 0
-  let y-bound 38
-  let max-pod-to-assign 0
+  let max-pod-to-assign total-empty
   let available-AGV 0
   ask AGVs with [availability = 0] [set available-AGV available-AGV + 1]
-  while [max-pod-to-assign < (available-AGV * 2)]
-  [ set y-bound (y-bound - pod-size + 1)
-    set max-pod-to-assign 0
-    ask emptys with [ycor > y-bound and status != 1][set max-pod-to-assign max-pod-to-assign + 1]]
-  ask emptys with [ycor > y-bound and status != 1] [set xjob xcor set yjob ycor let n empty-id
+  ask emptys with [status != 1] [set xjob xcor set yjob ycor let n empty-id
     ask AGVs with [AGV-id = id]
     [ set destination n
       starting-intersection-return id destination
@@ -801,9 +638,9 @@ to starting-intersection-return [id jobloc]
   ask AGVs with [AGV-id = id] [set ystart 39
     ( ifelse
       xcor < 10 [set xstart 4]
-      xcor < 16 and xcor > 9 [set xstart 10]
-      xcor < 22 and xcor > 15 [set xstart 16]
-      xcor < 28 and xcor > 21 [set xstart 22]
+      xcor < 16 and xcor > 1 [set xstart 10]
+      xcor < 22 and xcor > 16 [set xstart 16]
+      xcor < 28 and xcor > 22 [set xstart 22]
       xcor >= 28 [set xstart 28])]
 end
 
@@ -934,16 +771,8 @@ to change-yend [a]
     a = 0 and yend = 32 [set yend 38])
 end
 
-;------------------------------------------------------------ TRAFFIC ---------------------------------------------------------------------;
-
-to detect-traffic
-  ask patches with [meaning = "intersection"]
-  [ let num-AGV count AGVs in-radius 2
-    ifelse num-AGV > 1 [set pcolor red][set pcolor 9]]
-end
-
 ;------------------------------------------------------------ MOVE ---------------------------------------------------------------------;
-to pick-pod [b block]
+to pick-pod [b]
   let xjob 0 let yjob 0
   ask AGVs with [who = b]
   [ let n destination
@@ -951,8 +780,8 @@ to pick-pod [b block]
     ( ifelse
       path-status = "go-to-aisle" [go-to-aisle yjob]
       path-status = "reaching-destination" [reaching-destination xjob yjob]
-      path-status = "on-the-way" [on-the-way if path-status = "arrive"[set block 1]]
-      path-status = "arrive" [bring-pod-out if block = 1 [block-road "?" AGV-id set block 0] ask pods with [pod-id = n and shape != "empty space"][switch-empty xjob yjob b]])]
+      path-status = "on-the-way" [on-the-way]
+      path-status = "arrive" [bring-pod-out ask pods with [pod-id = n and shape != "empty space"][switch-empty xcor ycor b]])]
 end
 
 to go-to-aisle [yjob]
@@ -1028,9 +857,7 @@ to bring-to-picking [n]
   let m 0
   ask patch-here [if meaning = "intersection" [set m 1]]
   ask AGV n
-  [ if ycor >= 38 and ycor < 43 and q-time = 0 and any? AGVs-on patch-ahead 1 [set q-time time]
-    if ycor = 43 and q-time = 0 [set q-time time]
-    ifelse m = 1
+  [ ifelse m = 1
     [ (ifelse
       heading = 90 and ycor = 38 and xcor = 7 [move-to patch-ahead 0 lt 90 not-collide]
       heading = 90 and ycor = 38 and xcor = 13 [move-to patch-ahead 0 lt 90 not-collide]
@@ -1073,60 +900,29 @@ end
 
 to not-collide
   let AGV-ahead one-of AGVs-on patch-ahead 1
-  let n 0 let heading-ahead abs(heading - 180) let m 0
-  let id AGV-id let AGV-ahead-who 0
-  carefully[ask AGV-ahead [if AGV-id = id [set n 1] if hidden? [set m 1] if heading = heading-ahead [set heading-ahead "deadlock"] set AGV-ahead-who who]][]
-  (ifelse
-    AGV-ahead = nobody or m = 1 [set previous-x xcor set previous-y ycor ifelse heading = 180 and ycor - 1 <= 8 [set shape "transparent"] [set shape "kiva" set color 9 set size 0.9] fd 1]
-    n = 1 [fd 1 ask AGV-ahead [die]]
-    heading-ahead = "deadlock" and n != 1 [resolve who resolve AGV-ahead-who])
-  if AGV-ahead != nobody or n = 1 [
-    if previous-x != xcor or previous-y != ycor
-    [set previous-x xcor set previous-y ycor  ifelse status = "queuing" [set Stop-Que Stop-Que + 1] [set stopping stopping + 1]]]
-  ask AGVs with [shape = "dot"][let status-change 0 let dot-id agv-id ask AGVs with [AGV-id = dot-id][if path-status != "arrive" [set status-change 1]] if status-change = 1 [die]]
+  if AGV-ahead = nobody  [fd 1]
 end
 
-to bring-back [id]
+to bring-back [b]
   let xjob 0 let yjob 0
-  ask AGVs with [who = id]
+  ask AGVs with [who = b]
   [ let n destination
     ask emptys with [empty-id = n] [set xjob xcor set yjob ycor]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] count-robot-cycle-time set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
+      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xcor ycor b] set status "pick-pod" pair-next AGV-id assigning AGV-id])]
 end
 
-to block-road [xc id]
-  let yc ycor
-  if xc = "?"
-  [ set xc xcor
-    ask patches with [pxcor = xc - 1 and pycor = yc][ifelse meaning = "road-down" or meaning = "road-up" [set xc xc - 1][set xc xc + 1]]]
-  ask patches with [pxcor = xc and pycor = yc]
-  [ sprout-AGVs 1
-    [ set size 0.9
-      set color red
-      set shape "dot"
-      set availability 2
-      set AGV-id id
-      set status yc]]
-end
-
-to checking
-  ask AGVs
-  [if xcor = 0 or xcor = 35 [
-    let destination_ destination let under-pod 0 let xc 0 let yc 0
-    ask pods with [pod-id = destination_][set destination_ who set xc xcor set yc ycor]
-    move-to turtle destination_ ]]
-end
-
-to resolve [who-id]
-  let destination_ 0 let under-pod 0 let xc 0 let yc 0
-  ask AGVs with [who = who-id]
-  [ set destination_ destination
-    ask pods with [pod-id = destination_][set destination_ who set xc xcor set yc ycor]
-    ask patch-here [if meaning = "empty-space" or meaning = "podspace" [set under-pod 1]]
-    if under-pod = 1 [ifelse xc = xcor and yc = ycor [ht][move-to turtle destination_ set path-status "arrive"]]]
+to stay1
+  set count-down count-down - 1   ;decrement-timer
+  if count-down = 0
+    [
+      not-collide
+      set label ""
+      reset-count-down
+      set status "bring-to-picking"
+    ]
 end
 
 to stay
@@ -1137,8 +933,6 @@ to stay
       not-collide
       set label ""
       reset-count-down
-      reduce-qty carrying-pod-id
-      set que-time time - q-time
       set status "bring-back"
       if path-status != "on-the-way"
       [ ask AGVs with [availability = 0]
@@ -1147,15 +941,8 @@ to stay
     ]
 end
 
-to lead-time-count-down
-  set rep-lead-time rep-lead-time - 1
-  if rep-lead-time <= 0
-  [ set rep-lead-time 100
-    virtual-replenish pod-id]
-end
-
 to reset-count-down
-  set count-down round(random-poisson 15)
+  set count-down 50
   set label ""
 end
 
@@ -1315,7 +1102,7 @@ INPUTBOX
 887
 95
 Layout-file
-layout set 2.csv
+layout set 1.csv
 1
 0
 String
@@ -1332,15 +1119,15 @@ AGV set 1.csv
 String
 
 SLIDER
-726
-440
-848
-473
+899
+102
+1021
+135
 AGV-number
 AGV-number
 0
 50
-20.0
+5.0
 1
 1
 NIL
@@ -1375,10 +1162,10 @@ order set 1.csv
 String
 
 OUTPUT
-912
-32
-1309
-424
+1090
+18
+1487
+613
 11
 
 INPUTBOX
@@ -1398,10 +1185,10 @@ INPUTBOX
 887
 360
 type-of-item
-800.0
+100
 1
 0
-Number
+String
 
 INPUTBOX
 727
@@ -1415,10 +1202,10 @@ sku-per-pod
 Number
 
 BUTTON
-35
-108
-98
-141
+49
+117
+112
+150
 NIL
 go
 T
@@ -1431,81 +1218,20 @@ NIL
 NIL
 1
 
-PLOT
-726
-497
-926
-647
-Throughput Rate
-Hours
-Items
-0.0
-50.0
-0.0
-500.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
-
-MONITOR
-1375
-511
-1477
-556
-Stop & Go
-stopping
-17
+SLIDER
+899
+146
+1024
+179
+task
+task
+0
+50
+14.0
 1
-11
-
-MONITOR
-1376
-565
-1477
-610
-Stopping in Que
-Stop-Que
-17
 1
-11
-
-PLOT
-938
-498
-1138
-648
-Robot Cycle Time
-Task
-Time
-0.0
-50.0
-0.0
-150.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time]"
-
-PLOT
-1150
-499
-1350
-649
-Robot Traveling Time
-Task
-Time
-0.0
-50.0
-0.0
-100.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "ask AGVs with [r-cycle-time != 0][plot r-cycle-time - que-time set que-time 0 set q-time 0  set r-cycle-time 0]"
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1570,8 +1296,8 @@ Polygon -7500403 true true 105 210 195 210 150 300
 
 arrow2
 true
-0
-Rectangle -7500403 true true 0 0 300 300
+1
+Rectangle -7500403 true false 0 0 300 300
 Polygon -1 true false 30 225 150 75 270 225 150 90
 
 box
@@ -1660,9 +1386,9 @@ Circle -7500403 true true 0 0 300
 
 direction
 true
-0
-Rectangle -7500403 true true 0 0 300 300
-Polygon -16777216 true false 0 225 150 75 300 225 150 90
+1
+Rectangle -7500403 true false 0 0 300 300
+Polygon -1184463 true false 0 225 150 75 300 225 150 90
 
 dot
 false
@@ -1671,10 +1397,10 @@ Circle -7500403 true true 90 90 120
 
 empty space
 false
-14
-Rectangle -7500403 true false 0 0 300 345
-Rectangle -7500403 true false 6 5 292 294
-Rectangle -16777216 true true 14 13 284 285
+0
+Rectangle -7500403 true true 0 0 300 345
+Rectangle -7500403 true true 6 5 292 294
+Rectangle -16777216 true false 14 13 284 285
 
 face happy
 false
@@ -1745,12 +1471,6 @@ fulll square 1
 false
 0
 Rectangle -7500403 true true 8 8 294 292
-
-highway
-true
-0
-Rectangle -7500403 true true 0 0 300 300
-Polygon -14835848 true false 0 225 150 75 300 225 150 90
 
 house
 false
@@ -1937,13 +1657,12 @@ Polygon -7500403 true false 219 85 210 105 193 99 201 83
 
 shelf
 false
-15
-Rectangle -16777216 true false 0 0 300 300
-Rectangle -1 true true 21 22 278 278
+0
+Rectangle -1184463 true false 21 22 278 278
 Rectangle -16777216 true false -304 24 -4 324
-Rectangle -5825686 true false 30 159 270 264
-Rectangle -5825686 true false 179 35 269 140
-Rectangle -5825686 true false 31 35 166 140
+Rectangle -7500403 true true 30 159 270 264
+Rectangle -7500403 true true 179 35 269 140
+Rectangle -7500403 true true 31 35 166 140
 
 square
 false
@@ -1997,10 +1716,6 @@ Polygon -1 true false 0 157 45 181 79 194 45 166 0 151
 Polygon -1 true false 179 42 105 12 60 0 120 30 180 45 254 77 299 93 254 63
 Polygon -1 true false 99 91 50 71 0 57 51 81 165 135
 Polygon -1 true false 194 224 258 254 295 261 211 221 144 199
-
-transparent
-true
-0
 
 tree
 false
