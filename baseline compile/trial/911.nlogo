@@ -868,12 +868,8 @@ to ending-intersection-return [id jobloc]
 
     ;determine yend
     ask patches with [pxcor = xend_ and pycor = yjob] [if meaning = "road-up" [set roadup_ 1]]
-    let n = 1 ;just for looping
     ifelse roadup_ = 0
-    [ while [n != done]
-      [ yjob > storage-lower-ybound + (n * pod-batch-size) and yjob < storage-lower-ybound + ((n + 1) * pod-batch-size)
-
-      (ifelse
+    [(ifelse
       yjob < 14 [set yend 14 set straight-first 1]
       yjob < 20 and yjob > 14 [set yend 20 set straight-first 1]
       yjob < 26 and yjob > 20 [set yend 26 set straight-first 1]

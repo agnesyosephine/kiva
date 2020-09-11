@@ -144,7 +144,7 @@ end
 
 to set-globals
   set storage-xbound 1
-  let non-storage sort [pycor] of patches with [meaning = 0 and pxcor = min-pxcor + 1] print non-storage
+  let non-storage sort [pycor] of patches with [meaning = 0 and pxcor = min-pxcor + 1]
   set storage-upper-ybound (item ((length non-storage / 2) + 0.5) non-storage) - 2
   set storage-lower-ybound (item ((length non-storage / 2) - 0.5) non-storage) + 2
   let gap-on-aisle [pycor] of patches with [meaning = "road-left"] set gap-on-aisle remove-duplicates gap-on-aisle set gap-on-aisle sort gap-on-aisle
@@ -816,7 +816,7 @@ to assigning-empty
   ;selecting
   ask AGVs with [availability = 0] [ let a AGV-id let b 0  set availability 1
     ask emptys with [empty-id = table:get assignment a] [set status 1 set b empty-id set total-empty total-empty - 1] set destination b
-    starting-intersection-return AGV-id destination
+    starting-intersection-return AGV-id
     ending-intersection-return AGV-id destination
     set path-status "on-the-way"]
   carefully [file-delete "for pairing.csv"][]
@@ -838,7 +838,7 @@ to pair-empty-loc [id]
   ask emptys with [ycor > y-bound and status != 1] [set xjob xcor set yjob ycor let n empty-id
     ask AGVs with [AGV-id = id]
     [ set destination n
-      starting-intersection-return id destination
+      starting-intersection-return id
       ending-intersection-return id destination
       file-open "for pairing.csv"
       file-type xcor file-type "," file-type ycor file-type "," file-type xstart file-type "," file-type ystart file-type "," file-type xend file-type "," file-type yend file-type "," file-type xjob file-type "," file-type yjob file-type "," file-type u-turn file-type "," file-type AGV-id file-type "," file-type destination file-type "\n"
@@ -849,11 +849,22 @@ to pair-empty-loc [id]
 ;  ask patches with [pxcor = o and pycor = p] [set pcolor q]]
 end
 
-to starting-intersection-return [id jobloc]
-  ask AGVs with [AGV-id = id] [set ystart storage-upper-ybound + 1
-    let n 1 ;stopping criteria
-    while [ n != "done" ]
-    [ ifelse xcor < storage-xbound + ((n + 2) * 3) and xcor > (n * 3) [set xstart storage-xbound + (n * 3) set n "done"][set n n + 2]]]
+to starting-intersection-return [id]
+  ask AGVs with [AGV-id = id] [set ystart 39
+    ( ifelse
+      xcor < 10 [set xstart 4]
+      xcor < 16 and xcor > 9 [set xstart 10]
+      xcor < 22 and xcor > 15 [set xstart 16]
+      xcor < 28 and xcor > 21 [set xstart 22]
+      xcor >= 28 [set xstart 28])]
+
+;  ask AGVs with [AGV-id = id] [set ystart storage-upper-ybound + 1
+;    let n 1 ;stopping criteria
+;    while [ n != "done" ]
+;    [ print n
+;      ifelse xcor < storage-xbound + ((n + 2) * 3) and xcor > (n * 3) [set xstart storage-xbound + (n * 3) set n "done"]
+;      [ set n n + 2 print n]
+;    ]]
 end
 
 to ending-intersection-return [id jobloc]
@@ -868,8 +879,19 @@ to ending-intersection-return [id jobloc]
 
     ;determine yend
     ask patches with [pxcor = xend_ and pycor = yjob] [if meaning = "road-up" [set roadup_ 1]]
+    let n 1 ;just for looping
     ifelse roadup_ = 0
-    [(ifelse
+    [
+;      while [n != "done"]
+;      [ ifelse yjob > (storage-lower-ybound + (n * (pod-batch-size + 1))) and yjob < (storage-lower-ybound + ((n + 1) * (pod-batch-size + 1)))
+;        [ set yend storage-lower-ybound + (n * (pod-batch-size + 1))
+;          ifelse xcor < xend [set yend 38] [set yend 39]
+;          set n "done"
+;          if yjob < storage-upper-ybound - (2 * (pod-batch-size + 1)) [set straight-first 1]]
+;      [ set n n + 1]]]
+;      [
+
+      (ifelse
       yjob < 14 [set yend 14 set straight-first 1]
       yjob < 20 and yjob > 14 [set yend 20 set straight-first 1]
       yjob < 26 and yjob > 20 [set yend 26 set straight-first 1]
