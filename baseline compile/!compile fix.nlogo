@@ -114,7 +114,7 @@ to go
   ;count output
   if time mod 3600 = 3599 [finished-order 3600]
   ;order & replenishment
-  if time = next-order-time + 2 [generate-order qty-arrival update-order assign-order-to-pod update-order next-incoming-order] ;2 -> time to setup and go for the first setting the world
+  if time = next-order-time + 2 [generate-order num-arrival update-order assign-order-to-pod update-order next-incoming-order] ;2 -> time to setup and go for the first setting the world
   check-pod
 
   ;replication (number starts from 0)
@@ -464,7 +464,7 @@ to virtual-replenish [id]
 end
 
 to next-incoming-order
-  let n round(random-exponential time-arrival)
+  let n round(random-poisson time-arrival)
   set next-order-time time + n
 end
 
@@ -1143,11 +1143,15 @@ to queuing [n]
   ask AGV n
   [ if path-status != "on-the-way" [set availability 0]
     (ifelse
-    ycor = 45 and xcor mod 6 = 1 and heading = 0 [move-to patch-ahead 0 lt 90 not-collide
+      ycor = 45 and xcor mod 6 = 1 and heading = 0 [move-to patch-ahead 0 lt 90 not-collide
         let podid_ carrying-pod-id let staytime 0
-        ask pods with [pod-id = podid_][set staytime qty-ordered * random-poisson 6]
+        ask pods with [pod-id = podid_][set staytime qty-ordered * random-exponential 6]
         set count-down staytime]
-    ycor = 45 and xcor mod 6 = 4 [stay]
+      ycor = 45 and xcor mod 6 = 0 and any? AGVs-on patch-ahead 1 and any? AGVs-on patch-ahead 2 and heading = 270 [move-to patch-ahead 0 lt 90 not-collide]
+      ycor = 43 and xcor mod 6 = 0 and heading = 180 [move-to patch-ahead 0 rt 90 not-collide]
+      ycor = 43 and xcor mod 6 = 5 and heading = 270 [move-to patch-ahead 0 rt 90 not-collide]
+      ycor = 45 and xcor mod 6 = 5 and heading = 0 [move-to patch-ahead 0 lt 90 not-collide]
+      ycor = 45 and xcor mod 6 = 4 [stay]
     [not-collide])
     ]
 end
@@ -1192,8 +1196,6 @@ to-report free-to-move? [AGV-ahead traffic_ m horizontal vertical]
   if vertical = 0 and heading = 270 and AGV-ahead = nobody and ycor != 38 and ycor != 39 [report true]
   if vertical = 0 and heading = 90 and AGV-ahead = nobody and ycor != 38 and ycor != 39 [report true]
   if ycor = 38 or ycor = 39 [report true]
-;  if traffic_ = "yes" and heading = 270 and AGV-ahead = nobody [report true]
-;  if traffic_ = "yes" and heading = 90 and AGV-ahead = nobody [report true]
 
   ;traffic
   if heading = 0 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
@@ -1257,7 +1259,7 @@ end
 to stay
   set count-down count-down - 1   ;decrement-timer
   if count-down <= 0
-    [ move-to patch-ahead 0 lt 90
+    [ if heading != 180 [move-to patch-ahead 0 lt 90]
       not-collide
       set label ""
       reset-count-down
@@ -1466,7 +1468,7 @@ AGV-number
 AGV-number
 0
 50
-25.0
+35.0
 1
 1
 NIL
@@ -1670,7 +1672,7 @@ INPUTBOX
 460
 822
 520
-qty-arrival
+num-arrival
 30.0
 1
 0
