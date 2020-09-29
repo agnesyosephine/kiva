@@ -45,7 +45,6 @@ pods-own
   pod-id
   status
   replenish
-  rep-lead-time
   qty-ordered
 ]
 
@@ -107,8 +106,10 @@ to go
       status = "bring-to-picking" [bring-to-picking who-id]
       status = "queuing" [queuing who-id]
       status = "bring-back" [bring-back who-id]
+      status = "replenishment" [replenishment]
       status = "stop" [stop])]
-  ask pods with [replenish = 1][lead-time-count-down]
+;  ask pods with [replenish = 1 and shape = "full square"]
+;  [lead-time-count-down]
   checking
   detect-traffic
   ;count output
@@ -173,8 +174,7 @@ to set-layout
         [ set shape "full square"
           set color sky
           set pod-id total-pod
-          place-item pod-id sku-shuffle
-          set rep-lead-time 100]
+          place-item pod-id sku-shuffle]
         set meaning "podspace"
         set total-pod total-pod + 1
       ]
@@ -273,7 +273,7 @@ to set-layout
       [ sprout 1
         [ set shape "int5"
           set color black
-          set heading 0
+          ifelse ycor > (max-pycor / 2) [set heading 0][set heading 180]
           stamp
           die ]
         set pcolor 9
@@ -282,7 +282,7 @@ to set-layout
       [ sprout 1
         [ set shape "int3"
           set color black
-          set heading 0
+          ifelse ycor > (max-pycor / 2) [set heading 0][set heading 180]
           stamp
           die ]
         set pcolor 9
@@ -291,7 +291,7 @@ to set-layout
       [ sprout 1
         [ set shape "int1"
           set color black
-          set heading 0
+          ifelse ycor > (max-pycor / 2) [set heading 0][set heading 180]
           stamp
           die ]
         set pcolor 9
@@ -300,7 +300,7 @@ to set-layout
       [ sprout 1
         [ set shape "int2"
           set color black
-          set heading 0
+          ifelse ycor > (max-pycor / 2) [set heading 0][set heading 180]
           stamp
           die ]
         set pcolor 9
@@ -309,7 +309,7 @@ to set-layout
       [ sprout 1
         [ set shape "int6"
           set color black
-          set heading 0
+          ifelse ycor > (max-pycor / 2) [set heading 90][set heading 270]
           stamp
           die ]
         set pcolor 9
@@ -318,7 +318,7 @@ to set-layout
       [ sprout 1
         [ set shape "int8"
           set color black
-          set heading 0
+          ifelse ycor > (max-pycor / 2) [set heading 90][set heading 180]
           stamp
           die ]
         set pcolor 9
@@ -327,7 +327,7 @@ to set-layout
       [ sprout 1
         [ set shape "int7"
           set color black
-          set heading 0
+          set heading 180
           stamp
           die ]
         set pcolor 9
@@ -354,7 +354,7 @@ to set-layout
       [ sprout 1
         [ set shape "int8"
           set color black
-          set heading 90
+          ifelse ycor > (max-pycor / 2) [set heading 90][set heading 270]
           stamp
           die ]
         set pcolor 9
@@ -403,7 +403,7 @@ to place-agv
       [ sprout-AGVs 1
         [ set AGV-id n
           set size 0.9
-          set color 9
+          set color orange
           set availability 1
           set shape "kiva"
           set status "pick-pod"
@@ -461,6 +461,10 @@ to virtual-replenish [id]
     "item = virtualRep.VirtualReplenishment(pod_id)")
   let pod_item_now py:runresult "item"
   ask pods with [pod-id = pod-id] [set replenish 0 set items pod_item_now]
+  set color orange set status "bring-back"
+  set destination [who] of one-of emptys
+  starting-intersection-return AGV-id
+  ending-intersection-return AGV-id destination
 end
 
 to next-incoming-order
@@ -625,11 +629,14 @@ to switch-pod [xc yc id]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout-pods 1
     [ set shape "full square"
-      set color sky
       set pod-id transfer-pod-id
       set items items_
       set status status_
-      set replenish replenish_]
+      set replenish replenish_
+      ifelse replenish = 1
+      [ set color cyan ]
+      [ set color sky ]
+    ]
     set meaning "podspace"]
   ask pods with [pod-id = -1][die]
   ask emptys with [xcor = xc and ycor = yc][die]
@@ -645,7 +652,12 @@ to reduce-qty [pod_id]
     "rep = replenishIndicator.replenishmentIndicator(podid)")
   let pod_item_now py:runresult "item"
   let rep py:runresult "rep"
-  ask pods with [pod-id = pod_id][set items pod_item_now set replenish rep]
+  ask pods with [pod-id = pod_id]
+  [ set items pod_item_now set replenish rep
+    if replenish = 1
+    [ ask AGVs with [carrying-pod-id = pod_id]
+      [set color green]]
+  ]
   count-order-cycle-time pod_id
 end
 
@@ -850,7 +862,7 @@ to pair-empty-loc [id]
 end
 
 to starting-intersection-return [id]
-  ask AGVs with [AGV-id = id] [set ystart 39
+  ask AGVs with [AGV-id = id] [ifelse status != "replenishment" [set ystart 39][set ystart 7]
     ( ifelse
       xcor < 10 [set xstart 4]
       xcor < 16 and xcor > 9 [set xstart 10]
@@ -1008,7 +1020,7 @@ end
 ;------------------------------------------------------------ TRAFFIC ---------------------------------------------------------------------;
 
 to detect-traffic
-  ask patches with [meaning = "intersection"]
+  ask patches with [meaning = "intersection" and pycor != 7 and pycor != 8]
   [ let num-AGV 0
     let xdirection 0 let ydirection 0 let xc pxcor let yc pycor
     ifelse pxcor mod 2 = 0 [set xdirection "down"][set xdirection "up"]
@@ -1132,6 +1144,22 @@ to bring-to-picking [n]
       [not-collide])]
 end
 
+to replenishment
+  (ifelse
+    xcor < 16 and ycor = 8 [set heading 90 not-collide]
+    xcor > 16 and ycor = 7 [set heading 270 not-collide]
+    (ycor = 7 or ycor = 8) and xcor = 16 [set heading 180 not-collide]
+    xcor = 16 and ycor = 0 [set heading 90 not-collide]
+    xcor = 17 and ycor = 0 and any? AGVs-on patch-ahead 1 and any? AGVs-on patch-ahead 2 [set heading 0 not-collide]
+    xcor = 17 and ycor = 2 [set heading 90 not-collide]
+    xcor = 18 and ycor = 2 [set heading 180 not-collide]
+    xcor = 18 and ycor = 0 [set heading 90 not-collide]
+    xcor = 19 and ycor = 0 [set heading 0 lead-time-count-down]
+
+    [not-collide])
+
+end
+
 to decide-picking
   let which_ 0
   ask one-of picking-stations with [queue-count = min [queue-count] of picking-stations]
@@ -1170,7 +1198,7 @@ to not-collide
       ask AGVs in-radius 1 with [heading = 270 or heading = 90] [ if towards-traffic? xdirection ydirection xc yc and previously-moving? AGV-id [set vertical vertical + 1]]
   ]]
   (ifelse
-    free-to-move? AGV-ahead traffic_ m horizontal vertical [set previous-x xcor set previous-y ycor fd 1 ifelse ycor <= 7 or xcor = 0 or xcor = 35 [set shape "trans"][set shape "kiva"]]
+    free-to-move? AGV-ahead traffic_ m horizontal vertical [set previous-x xcor set previous-y ycor fd 1 ifelse ycor <= 7 or xcor = 0 or xcor = 35 and color = orange [set shape "trans"][set shape "kiva"]]
     n = 1 [fd 1 ask AGV-ahead [die]]
     heading-ahead = "deadlock" and n != 1 [resolve who resolve AGV-ahead-who])
 
@@ -1183,36 +1211,6 @@ to not-collide
   ask AGVs with [shape = "dot"][let status-change 0 let dot-id agv-id ask AGVs with [AGV-id = dot-id][if path-status != "arrive" [set status-change 1]] if status-change = 1 [die]]
 end
 
-to-report free-to-move? [AGV-ahead traffic_ m horizontal vertical]
-;  if AGV-ahead = nobody or m = 1 [report true]
-
-  ;no traffic
-  if AGV-ahead = nobody and traffic_ = "no" [report true]
-  if m = 1 and traffic_ = "no" [report true]
-
-  ;traffic - horizontal priority
-  if traffic_ = "yes" and heading = 270 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
-  if traffic_ = "yes" and heading = 90 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
-  if vertical = 0 and heading = 270 and AGV-ahead = nobody and ycor != 38 and ycor != 39 [report true]
-  if vertical = 0 and heading = 90 and AGV-ahead = nobody and ycor != 38 and ycor != 39 [report true]
-  if ycor = 38 or ycor = 39 [report true]
-
-  ;traffic
-  if heading = 0 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
-  if heading = 180 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
-  if traffic_ = "yes" and heading = 0 and AGV-ahead = nobody and horizontal <= 0 [report true]
-  if traffic_ = "yes" and heading = 180 and AGV-ahead = nobody and horizontal <= 0 [report true]
-  report false
-end
-
-to-report previously-moving? [id]
-  let yes 0
-  ask AGVs with [AGV-id = id]
-  [if previous-x != xcor and previous-y != ycor [set yes 1]]
-  if yes = 1 [report true]
-  report false
-end
-
 to bring-back [id]
   let xjob 0 let yjob 0
   ask AGVs with [who = id]
@@ -1221,7 +1219,13 @@ to bring-back [id]
     ( ifelse
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
-      path-status = "arrive" [ask emptys with [empty-id = n][switch-pod xjob yjob id] count-robot-cycle-time set status "pick-pod" pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
+      path-status = "arrive"
+      [ ask emptys with [empty-id = n]
+        [switch-pod xjob yjob id]
+        count-robot-cycle-time
+;        ifelse any?
+        set status "pick-pod"
+        pair-next AGV-id assigning AGV-id block-road xstart AGV-id])]
 end
 
 to block-road [xc id]
@@ -1267,8 +1271,8 @@ to stay
       set que-time time - q-time
       let n carrying-pod-id let x agv-id
       ask pods with [pod-id = n][set qty-ordered 0]
-      set status "bring-back"
-      if path-status != "on-the-way"
+      ifelse color = orange [set status "bring-back"][set status "replenishment" set count-down 100]
+      if path-status != "on-the-way" and status = "bring-back"
       [ ask AGVs with [availability = 0]
         [pair-empty-loc AGV-id]
         assigning-empty]
@@ -1276,15 +1280,43 @@ to stay
 end
 
 to lead-time-count-down
-  set rep-lead-time rep-lead-time - 1
-  if rep-lead-time <= 0
-  [ set rep-lead-time 100
-    virtual-replenish pod-id]
+  set count-down count-down - 1
+  if count-down <= 0
+  [ set count-down 100
+    virtual-replenish carrying-pod-id]
 end
 
 to reset-count-down
   set count-down (random-poisson 15)
   set label ""
+end
+;------------------------------------------------------------ REPORT ---------------------------------------------------------------------;
+to-report free-to-move? [AGV-ahead traffic_ m horizontal vertical]
+  ;no traffic
+  if AGV-ahead = nobody and traffic_ = "no" [report true]
+  if m = 1 and traffic_ = "no" [report true]
+
+  ;traffic - horizontal priority
+  if traffic_ = "yes" and heading = 270 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
+  if traffic_ = "yes" and heading = 90 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
+  if vertical = 0 and heading = 270 and AGV-ahead = nobody and ycor != 38 and ycor != 39 [report true]
+  if vertical = 0 and heading = 90 and AGV-ahead = nobody and ycor != 38 and ycor != 39 [report true]
+  if ycor = 38 or ycor = 39 [report true]
+
+  ;traffic
+  if heading = 0 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
+  if heading = 180 and AGV-ahead = nobody and previous-x != xcor and previous-y != ycor [report true]
+  if traffic_ = "yes" and heading = 0 and AGV-ahead = nobody and horizontal <= 0 [report true]
+  if traffic_ = "yes" and heading = 180 and AGV-ahead = nobody and horizontal <= 0 [report true]
+  report false
+end
+
+to-report previously-moving? [id]
+  let yes 0
+  ask AGVs with [AGV-id = id]
+  [if previous-x != xcor and previous-y != ycor [set yes 1]]
+  if yes = 1 [report true]
+  report false
 end
 
 to-report in-one-block? [id jobloc]
@@ -1443,7 +1475,7 @@ INPUTBOX
 804
 104
 Layout-file
-layout set 3.csv
+layout set 4.csv
 1
 0
 String
@@ -1475,10 +1507,10 @@ NIL
 HORIZONTAL
 
 OUTPUT
-1050
-38
-1447
-430
+1039
+23
+1436
+415
 11
 
 INPUTBOX
@@ -1673,7 +1705,7 @@ INPUTBOX
 822
 487
 num-arrival
-30.0
+15.0
 1
 0
 Number
@@ -2209,19 +2241,19 @@ Rectangle -7500403 true true 135 165 165 195
 
 kiva
 true
-0
+2
 Circle -16777216 true false 15 15 90
 Circle -16777216 true false 195 15 90
-Rectangle -955883 true false 45 195 255 285
-Circle -955883 true false 15 195 90
-Circle -955883 true false 195 195 90
+Rectangle -955883 true true 45 195 255 285
+Circle -955883 true true 15 195 90
+Circle -955883 true true 195 195 90
 Rectangle -16777216 true false 45 15 255 105
-Rectangle -955883 true false 15 45 285 240
-Polygon -7500403 true true 270 165 210 195 210 105 270 135
-Polygon -7500403 true true 135 30 105 90 195 90 165 30
-Polygon -7500403 true true 135 270 105 210 195 210 165 270
-Polygon -7500403 true true 30 135 90 105 90 195 30 165
-Polygon -7500403 true true 105 90 90 105 90 195 105 210 195 210 210 195 210 105 195 90
+Rectangle -955883 true true 15 45 285 240
+Polygon -1 true false 270 165 210 195 210 105 270 135
+Polygon -1 true false 135 30 105 90 195 90 165 30
+Polygon -1 true false 135 270 105 210 195 210 165 270
+Polygon -1 true false 30 135 90 105 90 195 30 165
+Polygon -1 true false 105 90 90 105 90 195 105 210 195 210 210 195 210 105 195 90
 Circle -16777216 true false 105 105 90
 
 leaf

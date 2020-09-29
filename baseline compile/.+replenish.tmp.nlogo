@@ -460,7 +460,12 @@ to virtual-replenish [id]
     "import virtualRep"
     "item = virtualRep.VirtualReplenishment(pod_id)")
   let pod_item_now py:runresult "item"
-  ask pods with [pod-id = pod-id] [set replenish 0 set items pod_item_now]
+  ask pods with [pod-id = pod-id]
+  [ set replenish 0
+    set items pod_item_now
+    set shape "full square"
+    set color sky
+  ]
 end
 
 to next-incoming-order
@@ -624,12 +629,16 @@ to switch-pod [xc yc id]
   ask pods with [pod-id = transfer-pod-id] [set pod-id -1 set items_ items set status_ status set replenish_ replenish]
   ask patches with [pxcor = xc and pycor = yc]
   [ sprout-pods 1
-    [ set shape "full square"
-      set color sky
-      set pod-id transfer-pod-id
+    [ set pod-id transfer-pod-id
       set items items_
       set status status_
-      set replenish replenish_]
+      set replenish replenish_
+      ifelse replenish = 0
+      [ set shape "full square"
+        set color sky ]
+      [ set shape "replenish"
+        set color black ]
+    ]
     set meaning "podspace"]
   ask pods with [pod-id = -1][die]
   ask emptys with [xcor = xc and ycor = yc][die]
@@ -645,7 +654,9 @@ to reduce-qty [pod_id]
     "rep = replenishIndicator.replenishmentIndicator(podid)")
   let pod_item_now py:runresult "item"
   let rep py:runresult "rep"
-  ask pods with [pod-id = pod_id][set items pod_item_now set replenish rep]
+  ask pods with [pod-id = pod_id]
+  [ set items pod_item_now
+    set replenish rep]
   count-order-cycle-time pod_id
 end
 
@@ -1468,7 +1479,7 @@ AGV-number
 AGV-number
 0
 50
-35.0
+25.0
 1
 1
 NIL
@@ -1641,7 +1652,7 @@ INPUTBOX
 815
 411
 initial-order
-80.0
+100.0
 1
 0
 Number
@@ -1673,7 +1684,7 @@ INPUTBOX
 822
 487
 num-arrival
-30.0
+7.0
 1
 0
 Number
@@ -2265,6 +2276,16 @@ Polygon -7500403 true true 165 180 165 210 225 180 255 120 210 135
 Polygon -7500403 true true 135 105 90 60 45 45 75 105 135 135
 Polygon -7500403 true true 165 105 165 135 225 105 255 45 210 60
 Polygon -7500403 true true 135 90 120 45 150 15 180 45 165 90
+
+replenish
+false
+15
+Rectangle -16777216 true false 0 0 300 300
+Rectangle -1 true true 21 22 278 278
+Rectangle -16777216 true false -304 24 -4 324
+Rectangle -13791810 true false 30 159 270 264
+Rectangle -13791810 true false 179 35 269 140
+Rectangle -13791810 true false 31 35 166 140
 
 road2
 true
