@@ -3,8 +3,8 @@ def reduceQtyInPod(podid,time):
     import numpy as np
     import os
 
-    pod_path = os.getcwd() + "\item in pod.csv"
-    assigned_path = os.getcwd() + "\Assigned_order_to_pod.csv"
+    pod_path = os.getcwd() + "/item in pod.csv"
+    assigned_path = os.getcwd() + "/Assigned_order_to_pod.csv"
     data_pod = pd.read_csv(pod_path, names = ["pod_id", "item", "qty", "due_date", "max_qty"])
     selected_pod = pd.read_csv(assigned_path, names = ["id","due_date","qty","time","finish_time"])
 

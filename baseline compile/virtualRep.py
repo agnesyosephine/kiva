@@ -3,7 +3,7 @@ def VirtualReplenishment(pod_id):
     import numpy as np
     import os
 
-    pod_path = os.getcwd() + "\item in pod.csv"
+    pod_path = os.getcwd() + "/item in pod.csv"
     data_pod = pd.read_csv(pod_path, names = ["pod_id", "item", "qty", "due_date", "max_qty"])
 
     item = []

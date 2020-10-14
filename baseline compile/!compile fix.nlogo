@@ -112,7 +112,7 @@ to go
   checking
   detect-traffic
   ;count output
-  if time mod 3600 = 3599 [finished-order 3600]
+  if time mod 60 = 59 [finished-order 60]
   ;order & replenishment
   if time = next-order-time + 2 [generate-order round(random-poisson num-arrival) update-order assign-order-to-pod update-order next-incoming-order] ;2 -> time to setup and go for the first setting the world
   check-pod
@@ -535,6 +535,10 @@ to finished-order [cycle]
   set finish-order py:runresult "count"
   file-open "throughput rate.csv"
   file-type finish-order file-type "\n"
+  file-close
+
+  file-open "remaining  order.csv"
+  file-type sum[qty-ordered] of pods with [shape = "shelf"] file-type "\n"
   file-close
 end
 
@@ -1536,7 +1540,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 3600 = 0 [plot finish-order]"
+"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 60 = 0 [plot finish-order]"
 
 MONITOR
 1049
@@ -1864,6 +1868,24 @@ service-time-beta
 1
 0
 Number
+
+PLOT
+1454
+317
+1654
+467
+Remaining orders
+Mins
+orders
+0.0
+200.0
+0.0
+5000.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 60 = 0 [plot sum[qty-ordered] of pods with [shape = \"shelf\"]]"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -2432,7 +2454,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@

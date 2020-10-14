@@ -3,7 +3,7 @@ def FinishOrderCount(time,cycle):
     import numpy as np
     import os
 
-    assigned_path = os.getcwd() + "\Assigned_order_to_pod.csv"
+    assigned_path = os.getcwd() + "/Assigned_order_to_pod.csv"
     selected_pod = pd.read_csv(assigned_path, names = ["id","due_date","qty","time","finish_time"])
 
     count = 0

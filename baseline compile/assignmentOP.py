@@ -3,9 +3,9 @@ def assignOP(time):
     import os
     import numpy as np
     
-    order_path = os.getcwd() + "\orders.csv"
-    pod_path = os.getcwd() + "\item in pod.csv"
-    assigned_path = os.getcwd() + "\Assigned_order_to_pod.csv"
+    order_path = os.getcwd() + "/orders.csv"
+    pod_path = os.getcwd() + "/item in pod.csv"
+    assigned_path = os.getcwd() + "/Assigned_order_to_pod.csv"
     selected_pod = pd.read_csv(assigned_path, names = ["id","due_date","qty","time","finish_time"])
     data_order = pd.read_csv(order_path, names = ["item", "qty", "due_date"])
     data_pod = pd.read_csv(pod_path, names = ["pod_id", "item", "qty", "due_date", "max_qty"])

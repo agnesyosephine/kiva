@@ -3,7 +3,7 @@ def CheckPriorityOrder(time,podlist):
     import os
     import numpy as np
 
-    assigned_path = os.getcwd() + "\Assigned_order_to_pod.csv"
+    assigned_path = os.getcwd() + "/Assigned_order_to_pod.csv"
     selected_pod = pd.read_csv(assigned_path, names = ["id","due_date","qty","time","finish_time"])
     priorityOrder = []
     for j in range (len(selected_pod.id)):
