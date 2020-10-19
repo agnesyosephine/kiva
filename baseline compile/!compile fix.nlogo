@@ -135,8 +135,8 @@ to delete-file
     carefully [file-delete "order cycle time.csv"][]
     carefully [file-delete "stop and go.csv"][]
     carefully [file-delete "replication.csv"][]
-    carefully [file-delete "remaining order.csv"][]]
-    ;carefully [file-delete "orders-dennis.csv"][]
+    carefully [file-delete "remaining order.csv"][]
+    carefully [file-delete "orders-dennis.csv"][]]
   file-open "Assigned_order_to_pod.csv" file-type "" file-close
 end
 
