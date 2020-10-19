@@ -134,7 +134,9 @@ to delete-file
     carefully [file-delete "throughput rate.csv"][]
     carefully [file-delete "order cycle time.csv"][]
     carefully [file-delete "stop and go.csv"][]
-    carefully [file-delete "replication.csv"][] ]
+    carefully [file-delete "replication.csv"][]
+    carefully [file-delete "remaining order.csv"][]]
+    ;carefully [file-delete "orders-dennis.csv"][]
   file-open "Assigned_order_to_pod.csv" file-type "" file-close
 end
 
@@ -488,6 +490,10 @@ to generate-order [num]
       file-open "orders.csv"
       file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
       file-close
+
+      file-open "orders-dennis.csv"
+      file-type item-type file-type "," file-type qty file-type "," file-type due file-type "\n"
+      file-close
       set n n + 1]
     [ stop]]
 end
@@ -537,8 +543,8 @@ to finished-order [cycle]
   file-type finish-order file-type "\n"
   file-close
 
-  file-open "remaining  order.csv"
-  file-type sum[qty-ordered] of pods with [shape = "shelf"] file-type "\n"
+  file-open "remaining order.csv"
+  file-type sum[qty-ordered] of pods file-type "\n"
   file-close
 end
 
@@ -1472,7 +1478,7 @@ AGV-number
 AGV-number
 0
 50
-35.0
+30.0
 1
 1
 NIL
@@ -1530,7 +1536,7 @@ PLOT
 1250
 626
 Throughput Rate
-Hours
+Mins
 Items
 0.0
 50.0
@@ -1885,7 +1891,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 60 = 0 [plot sum[qty-ordered] of pods with [shape = \"shelf\"]]"
+"default" 1.0 0 -16777216 true "" "if time = 1 [plot 0] if time mod 60 = 0 [plot sum[qty-ordered] of pods]"
 
 @#$#@#$#@
 ## WHAT IS IT?
