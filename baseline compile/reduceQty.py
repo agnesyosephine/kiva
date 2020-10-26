@@ -1,7 +1,7 @@
 def reduceQtyInPod(podid,time):
-    import pandas as pd
-    import numpy as np
-    import os
+    # import pandas as pd
+    # import numpy as np
+    # import os
 
     pod_path = os.getcwd() + "\item in pod.csv"
     assigned_path = os.getcwd() + "\Assigned_order_to_pod.csv"

@@ -10,6 +10,7 @@ globals
   total-pod
   total-empty
   pod-size
+
   pod-list
   storage-upper-ybound
   storage-lower-ybound
@@ -86,6 +87,26 @@ to setup
   set-layout
   set-globals
   py:setup py:python
+
+  (py:run
+    "import csv"
+    "import numpy as np"
+    "import os"
+    "from munkres import Munkres, print_matrix"
+  )
+
+
+  (py:run
+    "import virtualRep"
+    "import FinishOrder"
+    "import countingThroughput"
+    "import reduceQty"
+    "import replenishIndicator"
+    "import assignmentOP"
+    "import assignmentRP"
+  )
+
+
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
   generate-order initial-order
@@ -457,8 +478,7 @@ end
 to virtual-replenish [id]
   py:set "pod_id" id
   (py:run
-    "import virtualRep"
-    "item = virtualRep.VirtualReplenishment(pod_id)")
+        "item = virtualRep.VirtualReplenishment(pod_id)")
   let pod_item_now py:runresult "item"
   ask pods with [pod-id = pod-id] [set replenish 0 set items pod_item_now]
 end
@@ -530,7 +550,6 @@ to finished-order [cycle]
   py:set "time" time
   py:set "cycle" cycle
   (py:run
-    "import FinishOrder"
     "count = FinishOrder.FinishOrderCount(time,cycle)")
   set finish-order py:runresult "count"
   file-open "throughput rate.csv"
@@ -542,7 +561,6 @@ to count-order-cycle-time [podid]
   py:set "time" time
   py:set "podid" podid
   (py:run
-    "import countingThroughput"
     "order_cycle_time = countingThroughput.countThroughput(time,podid)")
   let result py:runresult "order_cycle_time"
   set o-cycle-time insert-item length o-cycle-time o-cycle-time result
@@ -639,9 +657,7 @@ to reduce-qty [pod_id]
   py:set "podid" pod_id
   py:set "time" time
   (py:run
-    "import reduceQty"
     "item = reduceQty.reduceQtyInPod(podid,time)"
-    "import replenishIndicator"
     "rep = replenishIndicator.replenishmentIndicator(podid)")
   let pod_item_now py:runresult "item"
   let rep py:runresult "rep"
@@ -672,7 +688,6 @@ to assign-order-to-pod
   if time_ = 1 [ set time_ round (random-exponential -30)]
   py:set "time" time_
   (py:run
-    "import assignmentOP"
     "result = assignmentOP.assignOP(time)")
   let result py:runresult "result"
   let n 0
@@ -763,7 +778,6 @@ to assigning [num]
     [ py:set "robotnode" available-AGV
       py:set "podnode" pod-to-assign
       (py:run
-        "import assignmentRP"
         "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
       let result py:runresult "result"
 ;      print(result)
@@ -807,7 +821,6 @@ to assigning-empty
   py:set "robotnode" available-AGV
   py:set "podnode" max-pod-to-assign
   (py:run
-    "import assignmentRP"
     "result = assignmentRP.AssignmentRobotToPod(robotnode,podnode)")
   let result py:runresult "result"
 ;  print(result)
