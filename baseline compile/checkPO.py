@@ -1,7 +1,7 @@
+import pandas as pd
+import os
+import numpy as np
 def CheckPriorityOrder(time,podlist):
-    import pandas as pd
-    import os
-    import numpy as np
 
     assigned_path = os.getcwd() + "\Assigned_order_to_pod.csv"
     selected_pod = pd.read_csv(assigned_path, names = ["id","due_date","qty","time","finish_time"])

@@ -1,4 +1,4 @@
-extensions [table matrix array csv py]
+extensions [table matrix array csv py profiler]
 
 breed[AGVs AGV]
 breed[pods pod]
@@ -88,13 +88,8 @@ to setup
   set-globals
   py:setup py:python
 
-  (py:run
-    "import csv"
-    "import numpy as np"
-    "import os"
-    "from munkres import Munkres, print_matrix"
-  )
-
+  profiler:reset
+  profiler:start
 
   (py:run
     "import virtualRep"
@@ -107,8 +102,8 @@ to setup
   )
 
 
-  output-show "   id       quantity      due date  "
-  output-show "------------------------------------"
+;  output-show "   id       quantity      due date  "
+;  output-show "------------------------------------"
   generate-order initial-order
   assign-order-to-pod
   place-agv
@@ -515,8 +510,8 @@ end
 to update-order
   let row []
   clear-output
-  output-show "   id       quantity      due date  "
-  output-show "------------------------------------"
+  ;output-show "   id       quantity      due date  "
+  ;output-show "------------------------------------"
   file-open "orders.csv"
   if not file-at-end?
   [let result csv:from-row file-read-line
@@ -528,9 +523,11 @@ to update-order
       let due item 2 row
 
       ;just to display the order on output
-      ifelse item-type < 10
-      [output-show (word "   0" item-type "          " qty "              " due "     ")]
-      [output-show (word "   " item-type "          " qty "              " due "     ")]]]
+;      ifelse item-type < 10
+;      [output-show (word "   0" item-type "          " qty "              " due "     ")]
+;      [output-show (word "   " item-type "          " qty "              " due "     ")]
+    ]
+  ]
 
     file-close
 end
@@ -1437,18 +1434,18 @@ GRAPHICS-WINDOW
 1
 1
 0
-1
-1
+0
+0
 1
 0
 35
 0
 45
-0
-0
+1
+1
 1
 ticks
-30.0
+240.0
 
 INPUTBOX
 690
@@ -1481,7 +1478,7 @@ AGV-number
 AGV-number
 0
 50
-35.0
+50.0
 1
 1
 NIL
@@ -1500,7 +1497,7 @@ INPUTBOX
 811
 257
 type-of-item
-800.0
+8000.0
 1
 0
 Number
@@ -1511,7 +1508,7 @@ INPUTBOX
 811
 317
 sku-per-pod
-2.0
+20.0
 1
 0
 Number
@@ -2445,7 +2442,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
