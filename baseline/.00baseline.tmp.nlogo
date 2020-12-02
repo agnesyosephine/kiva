@@ -391,8 +391,8 @@ to random-place-agv
   py:set "numAGV" AGV-number
   py:set "numIndex" length agv_pod_X
   (py:run
-    "from random-AGV import random-AGV"
-    "ret = random-AGV(numAGV, numIndex)")
+    "from randomAGV import random-place-AGV"
+    "ret = random-place-AGV(numAGV, numIndex)")
   let agvloc py:runresult "ret"
   let n 0
   let hdg 2
