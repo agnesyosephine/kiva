@@ -20,6 +20,8 @@ globals
   stopping
   Stop-Que
   replication
+  agvX
+  agvY
 ]
 
 emptys-own
@@ -133,6 +135,11 @@ to replication-read
   carefully[let rep_ item 0 csv:from-file "Replication.csv" set replication item 0 rep_][set replication 0]
 end
 
+to setAgv [x y]
+  set agvX insert-item (length agvX) agvX x
+  set agvY insert-item (length agvY) agvY y
+end
+
 to set-layout
   set time time + 1
   let csvmap csv:from-file (word "layout/" layout-file)
@@ -141,6 +148,8 @@ to set-layout
   set total-empty 0
   set pod-size 5
   set o-cycle-time []
+  set agvX []
+  set agvY []
   ask patches [set pcolor 9]
   ask patches
   [
@@ -156,6 +165,7 @@ to set-layout
           set rep-lead-time 100]
         set meaning "podspace"
         set total-pod total-pod + 1
+        setAgv pxcor pycor
       ]
       itemcode = "empty"
       [ sprout-emptys 1
@@ -163,7 +173,9 @@ to set-layout
           set color 9
           set empty-id total-empty]
         set meaning "empty-space"
-        set total-empty total-empty + 1]
+        set total-empty total-empty + 1
+        setAgv pxcor pycor
+      ]
       itemcode = "pic"
       [ sprout-pick-stations 1
         [ set shape "person"
@@ -371,12 +383,19 @@ to set-layout
 end
 
 to place-agv
-  let agvloc csv:from-file (word "AGV/" AGV-location-file)
+  py:set "numAGV" AGV-number
+  py:set "numIndex" length agvX
+  (py:run
+    "from randomAGV import randomAGV"
+    "ret = randomAGV(numAGV, numIndex)")
+  let agvloc py:runresult "ret"
   let n 0
+  let hdg 2
   loop
   [ ifelse n < AGV-number
-    [ let agvcode item n agvloc
-      ask patches with [pxcor = item 0 agvcode and pycor = item 1 agvcode]
+    [ let idx item n agvloc
+      ; ask patches with [pxcor = item 0 agvcode and pycor = item 1 agvcode]
+      ask patches with [pxcor = item idx agvX and pycor = item idx agvY]
       [ sprout-AGVs 1
         [ set AGV-id n
           set size 0.9
@@ -386,12 +405,13 @@ to place-agv
           set status "pick-pod"
           set count-down round(random-poisson 15)
           set next-empty-id (total-empty + AGV-id + 1)
-          ( ifelse
-            item 2 agvcode = "up"
+          (
+            ifelse
+            hdg = 0
             [ set heading 0 ]
-            item 2 agvcode = "down"
+            hdg = 1
             [ set heading 180 ]
-            item 2 agvcode = "right"
+            hdg = 2
             [ set heading 90 ]
             [ set heading 270 ] )
           pair-pick-pod AGV-id
@@ -2065,7 +2085,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
