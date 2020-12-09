@@ -24,6 +24,8 @@ globals
   replication
   item-now ;just for placing item
   pod-batch-size
+  availableXPos
+  availableYPos
 ]
 
 emptys-own
@@ -81,16 +83,17 @@ AGVs-own
 
 to setup
   ca
+  py:setup py:python
   replication-read
   delete-file
   set-layout
   set-globals
-  py:setup py:python
   output-show "   id       quantity      due date  "
   output-show "------------------------------------"
   generate-order initial-order
   assign-order-to-pod
-  place-agv
+  ; place-agv
+  place-agv-random
   assigning -1
   reset-ticks
   tick
@@ -157,6 +160,8 @@ to set-layout
   let csvmap csv:from-file (word "layout/" layout-file)
   let sku-shuffle shuffle range type-of-item ; list of shuffled item, so every item will be included in warehouse
   let n 0
+  set availableXPos []
+  set availableYPos []
   set total-pod 0
   set total-empty 0
   set pod-size 5
@@ -177,6 +182,7 @@ to set-layout
           set rep-lead-time 100]
         set meaning "podspace"
         set total-pod total-pod + 1
+        setAvailablePatch pxcor pycor
       ]
       itemcode = "empty"
       [ sprout-emptys 1
@@ -184,7 +190,9 @@ to set-layout
           set color 9
           set empty-id total-empty]
         set meaning "empty-space"
-        set total-empty total-empty + 1]
+        set total-empty total-empty + 1
+        setAvailablePatch pxcor pycor
+        ]
       itemcode = "pic"
       [ sprout-picking-stations 1
         [ set shape "person"
@@ -391,6 +399,57 @@ to set-layout
   let que-size item 0 sort [xcor] of turtles with [shape = "int7"] - item 0 sort [xcor] of picking-stations
   ask picking-stations [set entering-queue xcor + que-size]
   ask turtles with [shape = "int7"][die]
+end
+
+to setAvailablePatch [x y]
+  set availableXPos insert-item (length availableXPos) availableXPos x
+  set availableYPos insert-item (length availableYPos) availableYPos y
+end
+
+to place-agv-random
+  let lenAvailablePos length availableXPos
+  let selectedFlag n-values lenAvailablePos [0]
+  let tempIdx 0
+  let agvloc []
+  let n 0
+  while [n < AGV-number][
+    set tempIdx random lenAvailablePos
+    if item tempIdx selectedFlag = 0 [
+      set selectedFlag replace-item tempIdx selectedFlag 1
+      set agvloc insert-item (length agvloc) agvloc tempIdx
+      set n n + 1
+    ]
+  ]
+  set n 0
+  let hdg 2
+  loop
+  [ ifelse n < AGV-number
+    [ let idx item n agvloc
+      ;output-show (word "" idx ": " item idx availableXPos ", " item idx availableYPos ", " n)
+      ;set hdg random 4
+      ask patches with [pxcor = item idx availableXPos and pycor = item idx availableYPos]
+      [ sprout-AGVs 1
+        [ set AGV-id n
+          set size 0.9
+          set color 9
+          set availability 1
+          set shape "kiva"
+          set status "pick-pod"
+          set count-down round(random-poisson 15)
+          set next-empty-id (total-empty + AGV-id + 1)
+          (
+            ifelse
+            hdg = 0
+            [ set heading 0 ]
+            hdg = 1
+            [ set heading 180 ]
+            hdg = 2
+            [ set heading 90 ]
+            [ set heading 270 ] )
+          pair-pick-pod AGV-id
+        ] ] ]
+    [stop]
+    set n n + 1]
 end
 
 to place-agv
@@ -2432,7 +2491,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0-RC2
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
