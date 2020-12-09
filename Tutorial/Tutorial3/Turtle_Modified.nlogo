@@ -1,6 +1,8 @@
 turtles-own [energy] ;; for keeping track of when the turtle is ready
                      ;; to reproduce and when it will die
-
+globals[
+  total_energy
+]
 to setup
   clear-all
   setup-patches
@@ -14,11 +16,13 @@ end
 
 to setup-turtles
   create-turtles turtles_number    ;; uses the value of the number slider to create turtles
-  ask turtles [ setxy random-xcor random-ycor ]
+  set total_energy 0
+  ask turtles [
+    setxy random-xcor random-ycor
+    set total_energy total_energy + energy]
 end
 
 to go
-  let total_energy 0
   if ticks mod 500 = 0 [ ;;every 500 ticks
     ;;print (word "masuk")
     ask patches [ set pcolor green ] ;; set patches to green
@@ -27,13 +31,14 @@ to go
     ask turtles [
       let die_prob random 100
       if die_prob <= 15 [die] ] ;; death prob 15%
-    ask turtles [ set total_energy total_energy + energy]
+
   ]
   move-turtles
   eat-grass
   check-death
   reproduce
   regrow-grass
+   set total_energy sum [energy] of turtles
   tick                    ;; increase the tick counter by 1 each time through
 end
 
@@ -256,7 +261,7 @@ true
 false
 "" ""
 PENS
-"t_energy" 1.0 1 -16777216 true "" "if ticks mod 500 = 0 [ ask turtles [ plot energy ] ]"
+"t_energy" 1.0 0 -16777216 true "" "plot total_energy"
 
 @#$#@#$#@
 ## WHAT IS IT?
