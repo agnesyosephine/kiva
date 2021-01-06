@@ -7,6 +7,7 @@ breed[picking-stations picking-station]
 
 globals
 [
+  total-rep
   total-pod
   total-empty
   pod-size
@@ -459,10 +460,13 @@ to virtual-replenish [id]
   (py:run
     "import virtualRep"
     "item = virtualRep.VirtualReplenishment(pod_id)")
+  set total-rep total-rep + 1
   let pod_item_now py:runresult "item"
   ask pods with [pod-id = pod-id] [set replenish 0 set items pod_item_now]
-  set color orange set status "bring-back"
-  set destination [who] of one-of emptys
+  set color red set status "bring-back"
+  set destination [empty-id] of one-of emptys with [status != 1]
+  let n destination
+  ask emptys with [empty-id = n] [set status 1]
   starting-intersection-return AGV-id
   ending-intersection-return AGV-id destination
 end
@@ -654,7 +658,7 @@ to reduce-qty [pod_id]
   let rep py:runresult "rep"
   ask pods with [pod-id = pod_id]
   [ set items pod_item_now set replenish rep
-    if replenish = 1
+    if replenish <= safety-stock
     [ ask AGVs with [carrying-pod-id = pod_id]
       [set color green]]
   ]
@@ -862,13 +866,14 @@ to pair-empty-loc [id]
 end
 
 to starting-intersection-return [id]
-  ask AGVs with [AGV-id = id] [ifelse status != "replenishment" [set ystart 39][set ystart 7]
+  ask AGVs with [AGV-id = id] [ifelse ycor != min-pycor [set ystart 39
     ( ifelse
       xcor < 10 [set xstart 4]
       xcor < 16 and xcor > 9 [set xstart 10]
       xcor < 22 and xcor > 15 [set xstart 16]
       xcor < 28 and xcor > 21 [set xstart 22]
       xcor >= 28 [set xstart 28])]
+    [ set ystart 7 set xstart xcor ]]
 
 ;  ask AGVs with [AGV-id = id] [set ystart storage-upper-ybound + 1
 ;    let n 1 ;stopping criteria
@@ -889,40 +894,49 @@ to ending-intersection-return [id jobloc]
     ifelse patch-next-to = "aisle" [set xend xjob - 1] [set xend xjob + 1]
     set xend_ xend
 
-    ;determine yend
     ask patches with [pxcor = xend_ and pycor = yjob] [if meaning = "road-up" [set roadup_ 1]]
-    let n 1 ;just for looping
-    ifelse roadup_ = 0
-    [
-;      while [n != "done"]
-;      [ ifelse yjob > (storage-lower-ybound + (n * (pod-batch-size + 1))) and yjob < (storage-lower-ybound + ((n + 1) * (pod-batch-size + 1)))
-;        [ set yend storage-lower-ybound + (n * (pod-batch-size + 1))
-;          ifelse xcor < xend [set yend 38] [set yend 39]
-;          set n "done"
-;          if yjob < storage-upper-ybound - (2 * (pod-batch-size + 1)) [set straight-first 1]]
-;      [ set n n + 1]]]
-;      [
+    ;determine yend (not from replenishment)
+    ifelse ycor != min-pycor
+    [ ifelse roadup_ = 0
+      [(ifelse
+        yjob < 14 [set yend 14 set straight-first 1]
+        yjob < 20 and yjob > 14 [set yend 20 set straight-first 1]
+        yjob < 26 and yjob > 20 [set yend 26 set straight-first 1]
+        yjob < 32 and yjob > 26 [set yend 32]
+        [ifelse xcor < xend [set yend 38] [set yend 39]])]
+      [(ifelse
+        yjob < 14 [set yend 8 set straight-first 1]
+        yjob < 20 and yjob > 14 [set yend 14 set straight-first 1]
+        yjob < 26 and ycor > 20 [set yend 20 set straight-first 1]
+        yjob < 32 and yjob > 26 [set yend 26 set straight-first 1]
+        [set yend 32])
+        set u-turn 3
+        set straight-first 1]]
 
-      (ifelse
-      yjob < 14 [set yend 14 set straight-first 1]
-      yjob < 20 and yjob > 14 [set yend 20 set straight-first 1]
-      yjob < 26 and yjob > 20 [set yend 26 set straight-first 1]
-      yjob < 32 and yjob > 26 [set yend 32]
-      [ifelse xcor < xend [set yend 38] [set yend 39]])]
-    [(ifelse
-      yjob < 14 [set yend 8 set straight-first 1]
-      yjob < 20 and yjob > 14 [set yend 14 set straight-first 1]
-      yjob < 26 and ycor > 20 [set yend 20 set straight-first 1]
-      yjob < 32 and yjob > 26 [set yend 26 set straight-first 1]
-      [set yend 32])
-      set u-turn 3
-      set straight-first 1]
+    ;determine yend (from replenishment)
+    [ ifelse roadup_ = 0
+      [(ifelse
+        yjob < 14 [set yend 14]
+        yjob < 20 and yjob > 14 [set yend 20 set straight-first 1]
+        yjob < 26 and yjob > 20 [set yend 26 set straight-first 1]
+        yjob < 32 and yjob > 26 [set yend 32 set straight-first 1]
+        [ifelse xcor < xend [set yend 7] [set yend 8]])]
+      [(ifelse
+        yjob < 14 [set yend 8]
+        yjob < 20 and yjob > 14 [set yend 14 set straight-first 1]
+        yjob < 26 and ycor > 20 [set yend 20 set straight-first 1]
+        yjob < 32 and yjob > 26 [set yend 26 set straight-first 1]
+        [set yend 32 set straight-first 1])
+        set u-turn 3
+;        set straight-first 1
+    ]]
 
     (ifelse
       u-turn = 3 and xcor < xend and yend mod 4 = 2 [set straight-first 1]
       u-turn = 3 and xcor > xend and yend mod 4 = 0 [set straight-first 1]
       xcor > xend and yend mod 4 = 0 [set straight-first 1]
-      xcor < xend and yend mod 4 = 2 and yend != storage-upper-ybound and yend != (storage-upper-ybound + 1) [set straight-first 1])]
+      xcor < xend and yend mod 4 = 2 and yend != storage-upper-ybound and yend != (storage-upper-ybound + 1) [set straight-first 1])
+  ]
 end
 
 to starting-intersection [id jobloc]
@@ -1140,14 +1154,14 @@ to bring-to-picking [n]
       ;after hallway
       xcor = 1 and heading != 0 [move-to patch-ahead 0 rt 90 not-collide]
       xcor = 34 and heading != 0 [move-to patch-ahead 0 rt 90 not-collide]
-      ycor = 43 [set status "queuing"]
+      ycor = 43 [set status "queuing" set xstart xcor set ystart ycor]
       [not-collide])]
 end
 
 to replenishment
   (ifelse
-    xcor < 16 and ycor = 8 [set heading 90 not-collide]
-    xcor > 16 and ycor = 7 [set heading 270 not-collide]
+    xcor < 16 and ycor = 7 [set heading 90 not-collide]
+    xcor > 16 and ycor = 8 [set heading 270 not-collide]
     (ycor = 7 or ycor = 8) and xcor = 16 [set heading 180 not-collide]
     xcor = 16 and ycor = 0 [set heading 90 not-collide]
     xcor = 17 and ycor = 0 and any? AGVs-on patch-ahead 1 and any? AGVs-on patch-ahead 2 [set heading 0 not-collide]
@@ -1157,7 +1171,6 @@ to replenishment
     xcor = 19 and ycor = 0 [set heading 0 lead-time-count-down]
 
     [not-collide])
-
 end
 
 to decide-picking
@@ -1198,7 +1211,7 @@ to not-collide
       ask AGVs in-radius 1 with [heading = 270 or heading = 90] [ if towards-traffic? xdirection ydirection xc yc and previously-moving? AGV-id [set vertical vertical + 1]]
   ]]
   (ifelse
-    free-to-move? AGV-ahead traffic_ m horizontal vertical [set previous-x xcor set previous-y ycor fd 1 ifelse ycor <= 7 or xcor = 0 or xcor = 35 and color = orange [set shape "trans"][set shape "kiva"]]
+    free-to-move? AGV-ahead traffic_ m horizontal vertical [set previous-x xcor set previous-y ycor fd 1 ifelse ycor <= 7 or xcor = 0 or xcor = 35 and color = white [set shape "trans"][set shape "kiva"]]
     n = 1 [fd 1 ask AGV-ahead [die]]
     heading-ahead = "deadlock" and n != 1 [resolve who resolve AGV-ahead-who])
 
@@ -1220,7 +1233,8 @@ to bring-back [id]
       path-status = "reaching-destination" [reaching-destination xjob yjob]
       path-status = "on-the-way" [on-the-way]
       path-status = "arrive"
-      [ ask emptys with [empty-id = n]
+      [ if color = red [set color orange]
+        ask emptys with [empty-id = n]
         [switch-pod xjob yjob id]
         count-robot-cycle-time
 ;        ifelse any?
@@ -1271,7 +1285,7 @@ to stay
       set que-time time - q-time
       let n carrying-pod-id let x agv-id
       ask pods with [pod-id = n][set qty-ordered 0]
-      ifelse color = orange [set status "bring-back"][set status "replenishment" set count-down 100]
+      ifelse color = orange [set status "bring-back"][set status "replenishment" set count-down rep-time]
       if path-status != "on-the-way" and status = "bring-back"
       [ ask AGVs with [availability = 0]
         [pair-empty-loc AGV-id]
@@ -1282,7 +1296,7 @@ end
 to lead-time-count-down
   set count-down count-down - 1
   if count-down <= 0
-  [ set count-down 100
+  [ set count-down rep-time
     virtual-replenish carrying-pod-id]
 end
 
@@ -1500,7 +1514,7 @@ AGV-number
 AGV-number
 0
 50
-35.0
+25.0
 1
 1
 NIL
@@ -1534,23 +1548,6 @@ sku-per-pod
 1
 0
 Number
-
-BUTTON
-35
-108
-98
-141
-NIL
-go
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-0
 
 PLOT
 1050
@@ -1646,10 +1643,10 @@ NIL
 1
 
 INPUTBOX
-695
-610
-810
-670
+697
+711
+812
+771
 simulation-run-hours
 12.0
 1
@@ -1657,10 +1654,10 @@ simulation-run-hours
 Number
 
 INPUTBOX
-810
-610
-925
-670
+812
+711
+927
+771
 simulation-replication
 30.0
 1
@@ -1684,7 +1681,7 @@ INPUTBOX
 762
 487
 time-arrival
-20.0
+30.0
 1
 0
 Number
@@ -1826,10 +1823,10 @@ pod-batch-size
 11
 
 TEXTBOX
-696
-589
-990
-619
+698
+690
+992
+720
 ------------------- SIMULATION SETTING -------------------
 12
 0.0
@@ -1896,6 +1893,55 @@ service-time-beta
 1
 0
 Number
+
+INPUTBOX
+696
+620
+761
+680
+rep-time
+30.0
+1
+0
+Number
+
+TEXTBOX
+697
+596
+1018
+616
+------------------- REPRNISHMENT SETTING -------------------
+12
+0.0
+1
+
+INPUTBOX
+764
+620
+834
+680
+safety-stock
+0.3
+1
+0
+Number
+
+BUTTON
+34
+106
+97
+139
+NIL
+go
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
