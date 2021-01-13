@@ -26,6 +26,8 @@ globals
   pod-batch-size
   availableXPos
   availableYPos
+  minx
+  miny
 ]
 
 emptys-own
@@ -186,15 +188,6 @@ to assign-patch [itemcode x y]
           die ]
         set pcolor 9
         set meaning "queue" ]
-      itemcode = "qq"
-      [ sprout 1
-        [ set shape "stripes"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
       itemcode = "q1"
       [ sprout 1
         [ set shape "int7"
@@ -324,8 +317,8 @@ to assign-patch [itemcode x y]
   ]
 end
 
-to place-station [n-station station-name q-length n-v-aisle]
-  let a ((n-v-aisle - 2) / 2) - n-station
+to place-station [n-station station-name q-length]
+  let a ((num-v-aisle - 2) / 2) - n-station
   let b n-station + 1
   let c floor ((n-station - 1) / 2)
   let singleStep 6
@@ -351,13 +344,13 @@ to place-station [n-station station-name q-length n-v-aisle]
     let x4 x + 4
     (ifelse
       station-name = "pick"[
-        assign-patch "pic" x max-ycor
-        assign-patch "q5" x1 max-ycor
-        assign-patch "q4" x2 max-ycor
-        assign-patch "q2" x3 max-ycor
-        assign-patch "q1" x4 max-ycor
-        let y max-ycor - 1
-        let q max-ycor - q-length
+        assign-patch "pic" x miny
+        assign-patch "q5" x1 miny
+        assign-patch "q4" x2 miny
+        assign-patch "q2" x3 miny
+        assign-patch "q1" x4 miny
+        let y miny - 1
+        let q miny - q-length
         while[y >= q][
           assign-patch "q" x1 y
           assign-patch "q" x2 y
@@ -396,6 +389,216 @@ to place-station [n-station station-name q-length n-v-aisle]
   ]
 end
 
+to place-pod
+  let n-places (num-h-aisle - 1) * (num-v-aisle - 1) * (pod-batch-length * 2)
+  let n-empty round (n-places * empty-percentage / 100)
+  let n-pod n-places - n-empty
+  let pod-val shuffle sentence n-values n-empty [false] n-values n-pod [true]
+  set total-pod 0
+  set total-empty 0
+  let sku-shuffle shuffle range type-of-item ; list of shuffled item, so every item will be included in warehouse
+  set availableXPos []
+  set availableYPos []
+  let i 0
+  let y0 hallway-size-rep + queue-length-rep + 3
+  let xmax 3 * (num-v-aisle - 1)
+  let x 2
+  let y y0
+  let x-counter 0
+  let y-counter 0
+  while[i < n-places][
+    ask patches with [pxcor = x and pycor = y][
+      (ifelse
+        item i pod-val
+        [ sprout-pods 1
+          [ set shape "full square"
+            set color sky
+            set pod-id total-pod
+            place-item pod-id sku-shuffle
+            set rep-lead-time 100]
+          set meaning "podspace"
+          set total-pod total-pod + 1
+          setAvailablePatch pxcor pycor
+        ]
+        [ sprout-emptys 1
+          [ set shape "empty space"
+            set color 9
+            set empty-id total-empty]
+          set meaning "empty-space"
+          set total-empty total-empty + 1
+          setAvailablePatch pxcor pycor
+        ]
+      )
+    ]
+    set x x + 1
+    set x-counter (x-counter + 1) mod 2
+    if x-counter = 0[
+      set x x + 1
+    ]
+    if x > xmax[
+      set x 2
+      set x-counter 0
+      set y y + 1
+      set y-counter (y-counter + 1) mod pod-batch-length
+      if y-counter = 0[
+        set y y + 1
+      ]
+    ]
+    set i i + 1
+  ]
+end
+
+to place-highway-left [x y]
+  ask patches with [pxcor = x and pycor = y][
+    set pcolor 9
+    sprout 1
+    [ set shape "highway"
+      set color 9
+      set heading 270
+      stamp die ]
+    set meaning "road-left"
+  ]
+end
+
+to place-highway-right [x y]
+  ask patches with [pxcor = x and pycor = y][
+    set pcolor 9
+    sprout 1
+    [ set shape "highway"
+      set color 9
+      set heading 90
+      stamp die ]
+    set meaning "road-right"
+  ]
+end
+
+to place-intersection [x y id]
+  ask patches with [pxcor = x and pycor = y][
+    set pcolor 9
+    set meaning "intersection"
+    set intersection-id id
+  ]
+end
+
+to-report place-highway
+  let y0rep queue-length-rep + hallway-size-rep + 1
+  let y1rep y0rep + 1
+  let y0pick y0rep + (pod-batch-length * (num-h-aisle - 1)) + num-h-aisle
+  let y1pick y0pick + 1
+  let xmax (3 * (num-v-aisle - 1)) + 2
+  let n 0
+  let x 1
+  while[x < xmax][
+    ifelse (x - 1) mod 3 != 0[
+      place-highway-right x y0rep
+      place-highway-left x y1rep
+      place-highway-right x y0pick
+      place-highway-left x y1pick
+    ]
+    [
+      place-intersection x y0rep n
+      set n n + 1
+      place-intersection x y1rep n
+      set n n + 1
+      place-intersection x y0pick n
+      set n n + 1
+      place-intersection x y1pick n
+      set n n + 1
+    ]
+    set x x + 1
+  ]
+  report n
+end
+
+to place-road
+  let y0 queue-length-rep + hallway-size-rep + 3
+  let temp pod-batch-length + 1
+  let xmax (3 * (num-v-aisle - 1)) + 1
+  let ymax y0 + ((num-h-aisle - 1) * pod-batch-length) + (num-h-aisle - 2)
+  let u true
+  let r false
+  let x 1
+  let y y0
+  let x-counter 0
+  let y-counter 1
+  let n place-highway
+
+  while[y < ymax][
+    ifelse y-counter != 0[
+      ifelse u[
+        ask patches with [pxcor = x and pycor = y][
+          set pcolor 9
+          sprout 1
+          [ set shape "direction"
+            set color 9
+            set heading 0
+            stamp die ]
+          set meaning "road-up"
+        ]
+        set u false
+      ]
+      [
+        ask patches with [pxcor = x and pycor = y][
+          set pcolor 9
+          sprout 1
+          [ set shape "direction"
+            set color 9
+            set heading 180
+            stamp die ]
+          set meaning "road-down"
+        ]
+        set u true
+      ]
+      set x x + 3
+    ]
+    [
+      ifelse x-counter != 0[
+        ifelse r[
+          ask patches with [pxcor = x and pycor = y][
+            set pcolor 9
+            sprout 1
+            [ set shape "direction"
+              set color 9
+              set heading 90
+              stamp die ]
+            set meaning "road-right"
+          ]
+        ]
+        [
+          ask patches with [pxcor = x and pycor = y][
+            set pcolor 9
+            sprout 1
+            [ set shape "direction"
+              set color 9
+              set heading 270
+              stamp die ]
+            set meaning "road-left"
+          ]
+        ]
+      ]
+      [
+        place-intersection x y n
+        set n n + 1
+      ]
+      set x x + 1
+      set x-counter (x-counter + 1) mod 3
+    ]
+    if x > xmax[
+      set x 1
+      set y y + 1
+      set y-counter (y-counter + 1) mod temp
+      set x-counter 0
+      if y-counter = 0[
+        ifelse r[
+          set r false
+        ]
+        [
+          set r true
+        ]
+      ]
+    ]
+  ]
+end
 
 to-report get-array-index [indices arr-shape]
   let i length arr-shape
@@ -411,11 +614,11 @@ end
 
 to enough-space
   let msg ""
-  if max (list n-picking-st n-replenish-st) * 5 > max-xcor [set msg "Not enough x axis"]
-  let minY 0
-  set minY minY + hallway-size-pick + hallway-size-rep
-  if n-picking-st > 0 [set minY minY + queue-length-pick + 2]
-  if n-replenish-st > 0 [set minY minY + queue-length-rep + 2]
+  set minx max list (max (list n-picking-st n-replenish-st) * 5) ((3 * (num-v-aisle - 1)) + 2)
+  if minx > max-xcor [set msg "Not enough x axis"]
+  set miny queue-length-pick + queue-length-rep + 3 + hallway-size-pick + hallway-size-rep + num-h-aisle + ((num-h-aisle - 1) * pod-batch-length)
+  if n-picking-st = 0 [set miny miny - queue-length-pick - 2]
+  if n-replenish-st = 0 [set miny miny - queue-length-rep - 2]
   if minY > max-ycor [
     (ifelse
       length msg > 0 [set msg "Not enough x and y axis"]
@@ -423,13 +626,13 @@ to enough-space
     )
   ]
   if length msg > 0 [error msg]
+  resize-world 0 minx 0 miny
 end
 
 to new-set-layout
   set time time + 1
-  let csvmap csv:from-file (word "layout/" layout-file)
-  let sku-shuffle shuffle range type-of-item ; list of shuffled item, so every item will be included in warehouse
   let n 0
+  let sku-shuffle shuffle range type-of-item ; list of shuffled item, so every item will be included in warehouse
   set availableXPos []
   set availableYPos []
   set total-pod 0
@@ -438,236 +641,10 @@ to new-set-layout
   set o-cycle-time []
   set pod-list []
   ask patches [set pcolor 9]
-  ask patches
-  [
-    let listcode item ((pycor - max-pycor) * -1) csvmap
-    let itemcode item (pxcor) listcode
-    ( ifelse
-      itemcode = "pod"
-      [ sprout-pods 1
-        [ set shape "full square"
-          set color sky
-          set pod-id total-pod
-          place-item pod-id sku-shuffle
-          set rep-lead-time 100]
-        set meaning "podspace"
-        set total-pod total-pod + 1
-        setAvailablePatch pxcor pycor
-      ]
-      itemcode = "empty"
-      [ sprout-emptys 1
-        [ set shape "empty space"
-          set color 9
-          set empty-id total-empty]
-        set meaning "empty-space"
-        set total-empty total-empty + 1
-        setAvailablePatch pxcor pycor
-        ]
-      itemcode = "pic"
-      [ sprout-picking-stations 1
-        [ set shape "person"
-          set color black]
-        set meaning "picking-opens"
-        set pcolor 9]
-      itemcode = "rep"
-      [ sprout 1
-        [ set shape "person"
-          set color blue
-          stamp
-          die ]
-        set meaning "picking-opens"
-        set pcolor 9 ]
-      itemcode = "UR" or itemcode = "UL" or itemcode = "DR" or itemcode = "DL"
-      [ set pcolor 9
-        set meaning "intersection"
-        set intersection-id n
-        set n n + 1
-      ]
-      itemcode = "URC" or itemcode = "ULC" or itemcode = "DRC" or itemcode = "DLC"
-      [ set pcolor 9
-        set meaning "intersection"
-        set intersection-id n
-        set n n + 1
-      ]
-      itemcode = "U"
-      [ set pcolor 9
-        sprout 1
-        [ set shape "direction"
-          set color 9
-          set heading 0
-          stamp die ]
-        set meaning "road-up" ]
-      itemcode = "D"
-      [ set pcolor 9
-        sprout 1
-        [ set shape "direction"
-          set color 9
-          set heading 180
-          stamp die ]
-        set meaning "road-down" ]
-      itemcode = "L"
-      [ set pcolor 9
-        sprout 1
-        [ ifelse pycor = 7 or pycor = 8 or pycor = 38 or pycor = 39 [set shape "highway"] [set shape "direction"]
-          set color 9
-          set heading 270
-          stamp die ]
-        set meaning "road-left" ]
-      itemcode = "R"
-      [ set pcolor 9
-        sprout 1
-        [ ifelse pycor = 7 or pycor = 8 or pycor = 38 or pycor = 39 [set shape "highway"] [set shape "direction"]
-          set color 9
-          set heading 90
-          stamp die ]
-        set meaning "road-right" ]
-      itemcode = "q" or itemcode = "qi"
-      [ sprout 1
-        [ set shape "stripes"
-          set color black
-          set heading 90
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qq"
-      [ sprout 1
-        [ set shape "stripes"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q1"
-      [ sprout 1
-        [ set shape "int7"
-          set color black
-          set heading 0
-          stamp]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q2"
-      [ sprout 1
-        [ set shape "int5"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q3"
-      [ sprout 1
-        [ set shape "int3"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q4"
-      [ sprout 1
-        [ set shape "int1"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q5"
-      [ sprout 1
-        [ set shape "int2"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q6"
-      [ sprout 1
-        [ set shape "int6"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q7"
-      [ sprout 1
-        [ set shape "int8"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q9"
-      [ sprout 1
-        [ set shape "int7"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q10"
-      [ sprout 1
-        [ set shape "int5"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "q11"
-      [ sprout 1
-        [ set shape "int1"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qi2"
-      [ sprout 1
-        [ set shape "int8"
-          set color black
-          set heading 90
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qi3"
-      [ sprout 1
-        [ set shape "int7"
-          set color black
-          set heading 270
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qo"
-      [ sprout 1
-        [ set shape "arrow1"
-          set color black
-          set heading 0
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      itemcode = "qo2"
-      [ sprout 1
-        [ set shape "arrow1"
-          set color black
-          set heading 180
-          stamp
-          die ]
-        set pcolor 9
-        set meaning "queue" ]
-      [])
-  ]
-  place-station n-picking-st "pick" queue-length-pick 12
-  place-station n-replenish-st "replenish" queue-length-rep 12
+  place-pod
+  place-station n-picking-st "pick" queue-length-pick
+  place-station n-replenish-st "replenish" queue-length-rep
+  place-road
   let que-size item 0 sort [xcor] of turtles with [shape = "int7"] - item 0 sort [xcor] of picking-stations
   ask picking-stations [set entering-queue xcor + que-size]
   ask turtles with [shape = "int7"][die]
@@ -2458,7 +2435,7 @@ INPUTBOX
 1681
 167
 max-xcor
-35.0
+100.0
 1
 0
 Number
@@ -2469,7 +2446,7 @@ INPUTBOX
 1734
 167
 max-ycor
-45.0
+100.0
 1
 0
 Number
@@ -2480,7 +2457,7 @@ INPUTBOX
 1582
 107
 hallway-size-pick
-5.0
+4.0
 1
 0
 Number
@@ -2502,7 +2479,7 @@ INPUTBOX
 1553
 167
 n-picking-st
-4.0
+5.0
 1
 0
 Number
@@ -2524,7 +2501,7 @@ INPUTBOX
 1669
 107
 hallway-size-rep
-6.0
+5.0
 1
 0
 Number
@@ -2535,7 +2512,51 @@ INPUTBOX
 1861
 107
 queue-length-rep
-3.0
+1.0
+1
+0
+Number
+
+INPUTBOX
+1491
+193
+1583
+253
+pod-batch-length
+5.0
+1
+0
+Number
+
+INPUTBOX
+1583
+193
+1648
+253
+num-v-aisle
+12.0
+1
+0
+Number
+
+INPUTBOX
+1648
+193
+1714
+253
+num-h-aisle
+6.0
+1
+0
+Number
+
+INPUTBOX
+1714
+193
+1813
+253
+empty-percentage
+20.0
 1
 0
 Number
